@@ -107,6 +107,7 @@ Alternate Implementations
   * Java: [Google Web Toolkit](https://code.google.com/p/google-web-toolkit/source/browse/trunk/dev/core/src/com/google/gwt/dev/shell/BrowserChannelServer.java);
     [Design](https://code.google.com/p/google-web-toolkit/wiki/DesignOOPHM)
   * JavaScript: [node-browserchannel](https://github.com/josephg/node-browserchannel/)
+  * Go: [go-browserchannel](https://github.com/MathieuTurcotte/go-browserchannel)
 
 Thanks
 ------
