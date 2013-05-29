@@ -84,7 +84,8 @@ demo.ChannelHandler.prototype.channelHandleArray = function(browserChannel, arra
 
 var handler = new demo.ChannelHandler();
 var channelDebug = new goog.net.ChannelDebug();
-var channel = new goog.net.BrowserChannel('8');
+var channel = new goog.net.BrowserChannel('8', ['<host prefix>', '<blocked prefix>']);
+channel.setSupportsCrossDomainXhrs(true);
 channel.setHandler(handler);
 channel.setChannelDebug(channelDebug);
 channel.connect('channel/test', 'channel/bind', {});
