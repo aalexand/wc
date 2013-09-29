@@ -105,10 +105,8 @@ Alternate Implementations
 
   * C++: [libevent-browserchannel-server](https://code.google.com/p/libevent-browserchannel-server/);
     [protocol documentation](https://code.google.com/p/libevent-browserchannel-server/wiki/BrowserChannelProtocol)
-  * Java: [Google Web Toolkit](https://code.google.com/p/google-web-toolkit/source/browse/trunk/dev/core/src/com/google/gwt/dev/shell/BrowserChannelServer.java);
-    [Design](https://code.google.com/p/google-web-toolkit/wiki/DesignOOPHM)
-  * JavaScript: [node-browserchannel](https://github.com/josephg/node-browserchannel/)
-  * Go: [go-browserchannel](https://github.com/MathieuTurcotte/go-browserchannel)
+  * Node.JS: [node-browserchannel](https://github.com/josephg/node-browserchannel/)
+  * Go (golang): [go-browserchannel](https://github.com/MathieuTurcotte/go-browserchannel)
   * Clojure [clj-browserchannel](https://github.com/thegeez/clj-browserchannel)
 
 Thanks
