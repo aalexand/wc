@@ -109,6 +109,7 @@ Alternate Implementations
     [Design](https://code.google.com/p/google-web-toolkit/wiki/DesignOOPHM)
   * JavaScript: [node-browserchannel](https://github.com/josephg/node-browserchannel/)
   * Go: [go-browserchannel](https://github.com/MathieuTurcotte/go-browserchannel)
+  * Clojure [clj-browserchannel](https://github.com/thegeez/clj-browserchannel)
 
 Thanks
 ------
