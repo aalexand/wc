@@ -100,6 +100,12 @@ Server Usage (Go)
 
 TODO(ahochhaus): Document
 
+```
+go get github.com/samegoal/gowebchannel
+```
+
+[Docs](http://godoc.org/github.com/samegoal/gowebchannel)
+
 Alternate Implementations
 -------------------------
 
