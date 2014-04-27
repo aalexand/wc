@@ -1,4 +1,4 @@
-gowebchannel
+wc
 ============
 
 [Full-duplex](http://en.wikipedia.org/wiki/Full-duplex#Full-duplex) web
@@ -8,9 +8,8 @@ and written in [Go](http://golang.org/).
 The client-side portion of WebChannel is open sourced (APLv2) as part of
 closure-library. Unfortunately, [Google has not released the server-side
 portion](http://books.google.com/books?id=p7uyWPcVGZsC&pg=PA179) of the
-code required to use WebChannel meaningfully. The gowebchannel package
-provides an open source (BSD) licensed server-side library to fill this
-missing gap.
+code required to use WebChannel meaningfully. The wc package provides an
+open source (BSD) licensed server-side library to fill this missing gap.
 
 WebChannel
 ----------
@@ -40,7 +39,7 @@ From the [goog.net.WebChannel file overview](https://code.google.com/p/closure-l
 
 At the time of this writing (5/2013) the only WebChannel transport included
 in closure-library is BrowserChannel. As additional transports are added
-gowebchannel intends to add support for them as well.
+wc intends to add support for them as well.
 
 BrowserChannel
 --------------
@@ -101,10 +100,11 @@ Server Usage (Go)
 TODO(ahochhaus): Document
 
 ```
-go get github.com/samegoal/gowebchannel
+go get github.com/samegoal/wc
 ```
 
-[Docs](http://godoc.org/github.com/samegoal/gowebchannel)
+[Docs](http://godoc.org/github.com/samegoal/wc)
+[Demo Chat Application](http://godoc.org/github.com/samegoal/wcchat)
 
 Alternate Implementations
 -------------------------
