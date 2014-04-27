@@ -103,8 +103,8 @@ TODO(ahochhaus): Document
 go get github.com/samegoal/wc
 ```
 
-[Docs](http://godoc.org/github.com/samegoal/wc)
-[Demo Chat Application](http://godoc.org/github.com/samegoal/wcchat)
+[Docs](https://godoc.org/github.com/samegoal/wc)
+[Demo Chat Application](https://github.com/samegoal/wcchat)
 
 Alternate Implementations
 -------------------------
