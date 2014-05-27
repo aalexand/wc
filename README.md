@@ -1,20 +1,28 @@
 wc
 ============
 
-[Full-duplex](http://en.wikipedia.org/wiki/Full-duplex#Full-duplex) web
-server compatible with [goog.net.WebChannel](https://code.google.com/p/closure-library/source/browse/closure/goog/labs/net/webchannel.js) (from [closure-library](https://code.google.com/p/closure-library/))
-and written in [Go](http://golang.org/).
+A [Go](http://golang.org/) web server compatible with
+[closure-library](https://github.com/google/closure-library)'s
+[goog.net.WebChannel](https://github.com/google/closure-library/blob/master/closure/goog/labs/net/webchannel.js).
+A WebChannel represents a logical bi-directional communication channel between
+client and server. By exposing a generic communication interface which can be
+implemented over a variety of transports (eg: BrowserChannel, WebSockets,
+WebRTC, etc) WebChannel provides additional flexibility over programming
+directly on top WebSockets.
 
 The client-side portion of WebChannel is open sourced (APLv2) as part of
 closure-library. Unfortunately, [Google has not released the server-side
 portion](http://books.google.com/books?id=p7uyWPcVGZsC&pg=PA179) of the
 code required to use WebChannel meaningfully. The wc package provides an
-open source (BSD) licensed server-side library to fill this missing gap.
+open source (BSD) licensed golang server-side library to fill this missing gap.
+
+See the [wcchat](https://github.com/samegoal/wcchat) package for an example
+application.
 
 WebChannel
 ----------
 
-From the [goog.net.WebChannel file overview](https://code.google.com/p/closure-library/source/browse/closure/goog/labs/net/webchannel.js#16):
+From [goog.net.WebChannel](https://github.com/google/closure-library/blob/master/closure/goog/labs/net/webchannel.js#L16):
 
 > Similar to HTML5 WebSocket and Closure BrowserChannel, WebChannel
 > offers an abstraction for point-to-point socket-like communication between
@@ -37,22 +45,21 @@ From the [goog.net.WebChannel file overview](https://code.google.com/p/closure-l
 > Client-to-client messaging via WebRTC based transport may also be support
 > via the same WebChannel API in future.
 
-At the time of this writing (5/2013) the only WebChannel transport included
+At the time of this writing (5/2014) the only WebChannel transport included
 in closure-library is BrowserChannel. As additional transports are added
 wc intends to add support for them as well.
 
 BrowserChannel
 --------------
 
-From the [goog.net.BrowserChannel](http://docs.closure-library.googlecode.com/git/class_goog_net_BrowserChannel.html)
-[file overview](https://code.google.com/p/closure-library/source/browse/closure/goog/net/browserchannel.js#16):
+From [goog.net.BrowserChannel](https://github.com/google/closure-library/blob/master/closure/goog/net/browserchannel.js#L16):
 
 > A BrowserChannel simulates a bidirectional socket over HTTP. It is the
 > basis of the Gmail Chat IM connections to the server.
 
-BrowserChannel works on all major browsers (including IE6) using a variety of
-technologies including forever iframes (IE < 10) and XHR Streaming (IE10+ and
-non-IE). 
+BrowserChannel works on all major browsers (including IE5.5+) using a variety
+of technologies including forever iframes (IE < 10) and XHR Streaming (IE10+
+and non-IE).
 
 Client Usage (JavaScript)
 -------------------------

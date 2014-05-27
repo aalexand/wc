@@ -11,3 +11,13 @@
 // package provides an open source (BSD) licensed server-side library to
 // fill this missing gap.
 package wc
+
+import (
+	"net/http"
+)
+
+func TestHandler(w http.ResponseWriter, r *http.Request) {
+}
+
+func BindHandler(w http.ResponseWriter, r *http.Request) {
+}
