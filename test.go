@@ -21,8 +21,9 @@ func TestHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	// /channel/test responses are not padded
-	p.t = none
+	if p.t == length {
+		p.t = none
+	}
 	p.chunk([]byte(testFirstChunk))
 	time.Sleep(testDelay*time.Second)
 	p.chunk([]byte(testSecondChunk))

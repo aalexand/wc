@@ -51,7 +51,7 @@ func newPadder(w http.ResponseWriter, r *http.Request) (*padder, error) {
 		if domain := r.FormValue("DOMAIN"); domain != "" {
 			payload += fmt.Sprintf(scriptDomain, domain)
 		}
-		payload += IEPadding
+		payload += iePadding
 		_, err := p.w.Write([]byte(payload))
 		if err != nil {
 			return nil, err

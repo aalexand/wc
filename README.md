@@ -123,10 +123,11 @@ Server Usage (Go)
 TODO(ahochhaus): Document
 
 ```
-go get github.com/samegoal/wc
+go get gopkg.in/samegoal/wc.v0
 ```
 
-[Docs](https://godoc.org/github.com/samegoal/wc)
+[Docs](http://godoc.org/gopkg.in/samegoal/wc.v0)
+
 [Demo Chat Application](https://github.com/samegoal/wcchat)
 
 Alternate Implementations
