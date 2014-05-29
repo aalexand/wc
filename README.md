@@ -8,7 +8,7 @@ A WebChannel represents a logical bi-directional communication channel between
 client and server. By exposing a generic communication interface which can be
 implemented over a variety of transports (eg: BrowserChannel, WebSockets,
 WebRTC, etc) WebChannel provides additional flexibility over programming
-directly on top WebSockets.
+directly on top of WebSockets.
 
 The client-side portion of WebChannel is open sourced (APLv2) as part of
 closure-library. Unfortunately, [Google has not released the server-side
@@ -66,14 +66,30 @@ Client Usage (JavaScript)
 
 To connect from the client:
 
+  * [goog.net.WebChannel.Options](https://github.com/google/closure-library/blob/master/closure/goog/labs/net/webchannel.js#L63)
   * Implement a BrowserChannel.Handler subclass
   * Instantiate a BrowserChannel and connect()
   * call channel.sendMap() to send data
 
-
 ```javascript
-goog.require('goog.net.BrowserChannel');
-goog.require('goog.net.BrowserChannel.Handler');
+goog.require('goog.net.createWebChannelTransport');
+goog.require('goog.net.WebChannel');
+
+/**
+ * @type {!goog.net.WebChannelTransport}
+ */
+var channelTransport = goog.net.createWebChannelTransport();
+
+/**
+ * @type {!goog.net.WebChannel.Options}
+ */
+var options = { supportsCrossDomainXhr: true };
+
+/**
+ * @type {!goog.net.WebChannel}
+ */
+var channel = channelTransport.createWebChannel('/channel', options);
+
 
 /**
  * Browser channel handler.
