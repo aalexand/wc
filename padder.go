@@ -6,7 +6,7 @@ package wc
 
 import (
 	"bytes"
-	"fmt"
+	"html/template"
 	"net/http"
 )
 
@@ -16,18 +16,42 @@ const (
 	none   paddingType = iota
 	length
 	script
+)
 
-	scriptStart  = "<html><body>"
-	// TODO(hochhaus): make Sprintf calls safe to XSS attacks.
-	scriptDomain = "<script>try{document.domain='%s';}catch(e){}</script>\n"
-	scriptMsg    = "<script>try{parent.m(%s)}catch(e){}</script>\n"
-	scriptEnd    = "<script>try{parent.d();}catch(e){}</script>\n"
+var (
+	scriptStart = template.Must(template.New("").Parse("<html><body>" +
+		"{{if .Domain}}<script>try{document.domain='{{.Domain}}'}catch(e){}" +
+		"</script>{{end}}\n7cca69475363026330a0d99468e88d23ce95e22259112644301" +
+		"5f5f462d9a177186c8701fb45a6ffee0daf1a178fc0f58cd309308fba7e6f011ac38c9c" +
+		"dd4580760f1d4560a84d5ca0355ecbbed2ab715a3350fe0c479050640bd0e77acec90c5" +
+		"8c4d3dd0f5cf8d4510e68c8b12e087bd88cad349aafd2ab16b07b0b1b8276091217a44a" +
+		"9fe92fedacffff48092ee693af\n"))
+	scriptMessage = template.Must(template.New("").Parse(
+		"<script>try{parent.m('{{.Message}}')}catch(e){}</script>\n"))
+	scriptEnd = template.Must(template.New("").Parse(
+		"<script>try{parent.d()}catch(e){}</script>\n"))
+
+	xmlhttpMessage = template.Must(template.New("").Parse(
+		"{{.UTF8Length}}\n{{.Message}}"))
 )
 
 type padder struct {
 	w http.ResponseWriter
 	f http.Flusher
 	t paddingType
+}
+
+type startData struct {
+	Domain string
+}
+
+type messageData struct {
+	Message string
+}
+
+type xmlhttpMessageData struct {
+	UTF8Length int
+	Message []byte
 }
 
 func guessType(r *http.Request) paddingType {
@@ -44,37 +68,45 @@ func newPadder(w http.ResponseWriter, r *http.Request) (*padder, error) {
 	}
 	t := guessType(r)
 	p := &padder{w, f, t}
-	switch p.t {
+	header := w.Header()
+	// All WebChannel traffic must not be cached by the browser or proxies
+	header.Set("Expires", "Fri, 01 Jan 1990 00:00:00 GMT")
+	header.Set("Cache-Control", "max-age=0, must-revalidate, private")
+	// X-Content-Type-Options is required on Chrome for incremental
+	// XMLHttpRequest HTTP chunk processing with Content-Type text/plain.
+	header.Set("X-Content-Type-Options", "nosniff")
+	switch t {
 	case script:
-		p.w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		payload := scriptStart
-		if domain := r.FormValue("DOMAIN"); domain != "" {
-			payload += fmt.Sprintf(scriptDomain, domain)
-		}
-		payload += iePadding
-		_, err := p.w.Write([]byte(payload))
-		if err != nil {
+		header.Set("Content-Type", "text/html; charset=utf-8")
+		d := startData{r.FormValue("DOMAIN")}
+		if err := scriptStart.Execute(p.w, d); err != nil {
 			return nil, err
 		}
 	default:
-		p.w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		p.w.WriteHeader(http.StatusOK)
+		header.Set("Content-Type", "text/plain; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
 	}
-	p.f.Flush()
+	f.Flush()
 	return p, nil
 }
 
 func (p padder) chunk(b []byte) error {
 	switch p.t {
 	case script:
-		// TODO(hochhaus): sanitize b as "JsonString"
-		p.w.Write([]byte(fmt.Sprintf(scriptMsg, b)))
+		d := messageData{string(b)}
+		if err := scriptMessage.Execute(p.w, d); err != nil {
+			return err
+		}
 	case length:
 		utf8Length := len(bytes.Runes(b))
-		p.w.Write([]byte(fmt.Sprintf("%d\n", utf8Length)))
-		p.w.Write(b)
+		d := xmlhttpMessageData{utf8Length, b}
+		if err := xmlhttpMessage.Execute(p.w, d); err != nil {
+      return err
+    }
 	default:
-		p.w.Write(b)
+		if _, err := p.w.Write(b); err != nil {
+      return err
+    }
 	}
 	p.f.Flush()
 	return nil
@@ -82,8 +114,8 @@ func (p padder) chunk(b []byte) error {
 
 func (p padder) end() error {
 	if p.t == script {
-		_, err := p.w.Write([]byte(scriptEnd))
-		if err != nil {
+		d := struct{}{}
+		if err := scriptEnd.Execute(p.w, d); err != nil {
 			return err
 		}
 		p.f.Flush()
