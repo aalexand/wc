@@ -21,7 +21,7 @@ var (
 
 func testPhase1(p *padder) {
 	p.t = none
-	p.chunk(phase1Reply)
+	p.chunk(hostPrefixReply)
 	p.end()
 }
 
@@ -45,15 +45,19 @@ func testPhase2(p *padder) {
 //
 // http://www.google.com/support/chat/bin/answer.py?answer=161980
 //
-// For WebChannel the format is: <code>[hostPrefix_]</code>
-// For example: <code>["b"]</code>
+// SetHostPrefixReply must be called prior to listening for requests.
 //
-// For BrowserChannel the format is: <code>[hostPrefix_,blockedPrefix_]</code>
-// For example: <code>["b","chatenabled"]</code>
+// For WebChannel the format is: [hostPrefix_]
+// For example: ["b"]
+// https://github.com/google/closure-library/blob/master/closure/goog/labs/net/webchannel/webchannelbase.js#L151
 //
-// The default is <code>[]</code> which disables both values. The default is
-// acceptable for most users and should only be changed by clients with
-// advanced needs.
+// For BrowserChannel the format is: [hostPrefix_,blockedPrefix_]
+// For example: ["b","chatenabled"]
+// https://github.com/google/closure-library/blob/master/closure/goog/net/browserchannel.js#L235
+// https://github.com/google/closure-library/blob/master/closure/goog/net/browsertestchannel.js#L165
+//
+// The default is "[]" which disables both host and blocked prefixes. The
+// default is acceptable for most users.
 func SetHostPrefixReply(reply string) {
 	hostPrefixReply = []byte(reply)
 }
