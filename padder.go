@@ -13,7 +13,7 @@ import (
 type paddingType int
 
 const (
-	none   paddingType = iota
+	none paddingType = iota
 	length
 	script
 )
@@ -36,9 +36,11 @@ var (
 )
 
 type padder struct {
-	w http.ResponseWriter
-	f http.Flusher
-	t paddingType
+	w      http.ResponseWriter
+	f      http.Flusher
+	t      paddingType
+	setup  bool
+	domain string
 }
 
 type startData struct {
@@ -51,7 +53,7 @@ type messageData struct {
 
 type xmlhttpMessageData struct {
 	UTF8Length int
-	Message []byte
+	Message    []byte
 }
 
 func guessType(r *http.Request) paddingType {
@@ -61,36 +63,43 @@ func guessType(r *http.Request) paddingType {
 	return length
 }
 
-func newPadder(w http.ResponseWriter, r *http.Request) (*padder, error) {
+func newPadder(w http.ResponseWriter, r *http.Request) *padder {
 	f, ok := w.(http.Flusher)
 	if !ok {
 		panic("webserver doesn't support flushing")
 	}
 	t := guessType(r)
-	p := &padder{w, f, t}
-	header := w.Header()
+	return &padder{w, f, t, false, r.FormValue("DOMAIN")}
+}
+
+func (p *padder) start() error {
+	p.setup = true
+	header := p.w.Header()
 	// All WebChannel traffic must not be cached by the browser or proxies
 	header.Set("Expires", "Fri, 01 Jan 1990 00:00:00 GMT")
 	header.Set("Cache-Control", "max-age=0, must-revalidate, private")
 	// X-Content-Type-Options is required on Chrome for incremental
 	// XMLHttpRequest HTTP chunk processing with Content-Type text/plain.
 	header.Set("X-Content-Type-Options", "nosniff")
-	switch t {
+	switch p.t {
 	case script:
 		header.Set("Content-Type", "text/html; charset=utf-8")
-		d := startData{r.FormValue("DOMAIN")}
+		d := startData{p.domain}
 		if err := scriptStart.Execute(p.w, d); err != nil {
-			return nil, err
+			return err
 		}
 	default:
 		header.Set("Content-Type", "text/plain; charset=utf-8")
-		w.WriteHeader(http.StatusOK)
 	}
-	f.Flush()
-	return p, nil
+	return nil
 }
 
-func (p padder) chunk(b []byte) error {
+func (p *padder) chunk(b []byte) error {
+	if !p.setup {
+		if err := p.start(); err != nil {
+			return err
+		}
+	}
 	switch p.t {
 	case script:
 		d := messageData{string(b)}
@@ -101,18 +110,23 @@ func (p padder) chunk(b []byte) error {
 		utf8Length := len(bytes.Runes(b))
 		d := xmlhttpMessageData{utf8Length, b}
 		if err := xmlhttpMessage.Execute(p.w, d); err != nil {
-      return err
-    }
+			return err
+		}
 	default:
 		if _, err := p.w.Write(b); err != nil {
-      return err
-    }
+			return err
+		}
 	}
 	p.f.Flush()
 	return nil
 }
 
-func (p padder) end() error {
+func (p *padder) end() error {
+	if !p.setup {
+		if err := p.start(); err != nil {
+			return err
+		}
+	}
 	if p.t == script {
 		d := struct{}{}
 		if err := scriptEnd.Execute(p.w, d); err != nil {
@@ -120,6 +134,6 @@ func (p padder) end() error {
 		}
 		p.f.Flush()
 	}
-	// TODO(hochhaus): ensure that handle func returns (to force end chunk)
+	// TODO(hochhaus): ensure that handler funcs return (to force end chunk)
 	return nil
 }
