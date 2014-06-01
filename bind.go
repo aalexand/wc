@@ -41,6 +41,9 @@ import (
 // * OSID, OAID session restarts
 // * client side session reconnects after server crash
 // * restart server without dropping back channels
+// * chunk compression
+// * SSL support
+// * expvar stats: # sessions, # backchannels, # pending messages, etc
 
 // BindHandler handles forward and backward channel HTTP requests. When using
 // the defaults this handler should be installed at "/channel" (WebChannel) or
