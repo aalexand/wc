@@ -78,7 +78,7 @@ type Session interface {
 
 	// Notifier provides the channel for application code to pass SessionActivity
 	// events for processing by WebChannel.
-	Notifier() chan SessionActivity
+	Notifier() <-chan SessionActivity
 
 	// BackChannel returns a slice of all pending Messages to be sent down the
 	// backchannel.
@@ -113,7 +113,7 @@ type Session interface {
 // ForwardChannel().
 type DefaultSession struct {
 	SessionID string
-	notifier  chan SessionActivity
+	notifier  <-chan SessionActivity
 }
 
 // SID return the SessionID field.
@@ -122,7 +122,7 @@ func (s *DefaultSession) SID() string {
 }
 
 // Notifier returns the DefaultSession notifier chan.
-func (s *DefaultSession) Notifier() chan SessionActivity {
+func (s *DefaultSession) Notifier() <-chan SessionActivity {
 	return s.notifier
 }
 
