@@ -15,7 +15,7 @@ func sessionWorker(sw *sessionWrapper) {
 	noopTimer := time.NewTimer(30 * time.Second)
 	noopTimer.Stop()
 	var br *backChannelRegister
-	var backChannelCloseNotifier chan bool
+	var backChannelCloseNotifier <-chan bool
 
 	for {
 		select {
