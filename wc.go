@@ -106,15 +106,11 @@ type Session interface {
 	// no ACK is sent to the client) if the messages could not be added to
 	// storage for later processing (or processed synchronously).
 	ForwardChannel(msgs []Message) error
-
-	// Terminated notifies that the Session has been terminated (either by the
-	// client or server).
-	TerminateSession(reason TerminationResaon) error
 }
 
 // DefaultSession provides a partial implementation of the Session interface.
-// Callers must implement at least BackChannel(), AckBackChannelThrough(),
-// ForwardChannel() and TerminateSession().
+// Callers must implement at least BackChannel(), AckBackChannelThrough() and
+// ForwardChannel().
 type DefaultSession struct {
 	SessionID string
 	notifier  chan SessionActivity
@@ -130,11 +126,11 @@ func (s *DefaultSession) Notifier() chan SessionActivity {
 	return s.notifier
 }
 
-// BackChannelClose provide a noop implementation.
+// BackChannelClose provides a noop implementation.
 func (s *DefaultSession) BackChannelClose() {
 }
 
-// BackChannelOpen provide a noop implementation.
+// BackChannelOpen provides a noop implementation.
 func (s *DefaultSession) BackChannelOpen() {
 }
 
@@ -161,15 +157,29 @@ type SessionManager interface {
 	// This is useful to clients which store persistent session information
 	// which survives across server restarts. When a requested SID cannot be
 	// found, return ErrUnknownSID.
-	LookupSession(sid string) (*Session, error)
+	LookupSession(sid string) (Session, error)
 
-	// NewSession creates a new WebChannel session. The returned *Session object
+	// NewSession creates a new WebChannel session. The returned Session object
 	// must have SID() populated. Additionally, session persistent state should
 	// be created as necessary.
-	NewSession(r *http.Request) (*Session, error)
+	NewSession(r *http.Request) (Session, error)
+
+	// TerminatedSession notifies that the Session has been terminated (either
+	// by the client or server).
+	TerminatedSession(sid string, reason TerminationResaon) error
 
 	// Error logs internal failure conditions to application level code.
-	Error(sid string, r *http.Request, err error)
+	Error(r *http.Request, err error)
+}
+
+// DefaultSessionManager provides a partial implementation of the
+// SessionManager interface. Callers must implement at least Authenticated(),
+// LookupSession(), NewSession() and TerminatedSession().
+type DefaultSessionManager struct {
+}
+
+// Error provides a noop implementation.
+func (sm *DefaultSessionManager) Error(*http.Request, error) {
 }
 
 // SetSessionManager allows the calling code to inject a custom application

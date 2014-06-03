@@ -65,10 +65,14 @@ func SetHostPrefixReply(reply string) {
 // TestHandler handles WebChannel and BrowserChannel test requests. When using
 // the defaults this hanlder should be installed at "/channel/test".
 func TestHandler(w http.ResponseWriter, r *http.Request) {
+	if sm == nil {
+		panic("No SessionManager provided")
+	}
 	p := newPadder(w, r)
-	if r.FormValue("MODE") == "init" {
+	switch r.FormValue("MODE") {
+	case "init":
 		testPhase1(p)
-	} else {
+	default:
 		testPhase2(p)
 	}
 }
