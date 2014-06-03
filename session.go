@@ -21,7 +21,7 @@ func sessionWorker(sw *sessionWrapper) {
 		select {
 		case <-noopTimer.C:
 			if br != nil {
-				// TODO(hochhaus: write noop message (only in non-buffered mode?)
+				// TODO(hochhaus): write noop message (only in non-buffered mode?)
 			}
 		case <-backChannelCloseNotifier:
 			sw.BackChannelClose()
@@ -51,12 +51,8 @@ func sessionWorker(sw *sessionWrapper) {
 			backChannelCloseNotifier = cn.CloseNotify()
 			sw.BackChannelOpen()
 		case sa := <-sw.Notifier():
-			switch sa {
-			case BackChannelActivity:
-				if br != nil {
-					// TODO(hochhaus): flush pending messages
-				}
-			case ServerTerminate:
+			switch {
+			case sa == ServerTerminate:
 				if br != nil {
 					// TODO(hochhaus): Send "stop" message to client
 					sw.BackChannelClose()
@@ -64,6 +60,12 @@ func sessionWorker(sw *sessionWrapper) {
 				}
 				// TODO(hochhaus): cleanup session state
 				break
+			case sa > 0:
+				// BackChannelActivity
+				sw.si.BachChannelBytes += int(sa)
+				if br != nil {
+					// TODO(hochhaus): flush pending messages
+				}
 			default:
 				log.Panicf("Unsupported SessionActivity: %d", sa)
 			}

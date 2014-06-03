@@ -28,9 +28,7 @@ var (
 type SessionActivity int
 
 const (
-	// BackChannelActivity notifies wc that the given session has pending
-	// messages which should be flushed to the next available backchannel.
-	BackChannelActivity SessionActivity = iota
+	// Note: Use negative numbers for all other SessionActivity
 
 	// ServerTerminate notifies wc the the given session should be terminated.
 	// Common use cases include Session timeouts, automatically logging a user
@@ -46,7 +44,11 @@ const (
 	// Such session "leakage" can happen, for example, when the server crashes
 	// and a session which was previously being processed (and would have been
 	// timed-out) it not used again after the application restarts.
-	ServerTerminate
+	ServerTerminate SessionActivity = 0
+
+	// A positive number represents BackChannelActivity which notifies wc that
+	// the given session has X additional pending bytes which should be flushed
+	// to the next available backchannel.
 )
 
 // TerminationResaon denotes the reason a session is being terminated.
@@ -80,9 +82,8 @@ type Session interface {
 	// events for processing by WebChannel.
 	Notifier() <-chan SessionActivity
 
-	// BackChannel returns a slice of all pending Messages to be sent down the
-	// backchannel.
-	BackChannel() ([]Message, error)
+	// BackChannel returns a slice of all pending backchannel Messages.
+	BackChannel() ([]*Message, error)
 
 	// BackChannelClose notifies that the current backchannel has closed. Most
 	// applications do not need this and can rely on the default implementation.
@@ -105,7 +106,13 @@ type Session interface {
 	// Therefore, it is vital that a non-nil error be returned (such that
 	// no ACK is sent to the client) if the messages could not be added to
 	// storage for later processing (or processed synchronously).
-	ForwardChannel(msgs []Message) error
+	ForwardChannel(msgs []*Message) error
+}
+
+// SessionInfo tracks the state related to which messages have been processed
+// on the forward and backward channels.
+type SessionInfo struct {
+	BackChannelAID, BachChannelBytes, ForwardChannelAID int
 }
 
 // DefaultSession provides a partial implementation of the Session interface.
@@ -157,7 +164,7 @@ type SessionManager interface {
 	// This is useful to clients which store persistent session information
 	// which survives across server restarts. When a requested SID cannot be
 	// found, return ErrUnknownSID.
-	LookupSession(sid string) (Session, error)
+	LookupSession(sid string) (Session, *SessionInfo, error)
 
 	// NewSession creates a new WebChannel session. The returned Session object
 	// must have SID() populated. Additionally, session persistent state should
@@ -170,16 +177,44 @@ type SessionManager interface {
 
 	// Error logs internal failure conditions to application level code.
 	Error(r *http.Request, err error)
+
+	// HostPrefix is used on IE < 10 to circumvent same host connection limits.
+	//
+	// On the client, hostPrefix_ values will be passed to correctHostPrefix()
+	// prior to use.
+	//
+	// WebChannel: https://github.com/google/closure-library/blob/master/closure/goog/labs/net/webchannel/webchannelbase.js#L151
+	// BrowserChannel: https://github.com/google/closure-library/blob/master/closure/goog/net/browserchannel.js#L235
+	//
+	// The default, disabling the host prefix, is acceptable for most users. This
+	// library does not support BlockedPrefix (used by BrowserChannel only).
+	HostPrefix() string
 }
 
 // DefaultSessionManager provides a partial implementation of the
 // SessionManager interface. Callers must implement at least Authenticated(),
-// LookupSession(), NewSession() and TerminatedSession().
+// NewSession() and TerminatedSession().
 type DefaultSessionManager struct {
+}
+
+// LookupSession provides a noop implementation. All sessions requested are
+// returned as ErrUnknownSID which is suitable for applications which do not
+// persist session information across server server restarts.
+func (sm *DefaultSessionManager) LookupSession(sid string) (
+	Session,
+	*SessionInfo,
+	error,
+) {
+	return nil, nil, ErrUnknownSID
 }
 
 // Error provides a noop implementation.
 func (sm *DefaultSessionManager) Error(*http.Request, error) {
+}
+
+// HostPrefix provides an empty host prefix.
+func (sm *DefaultSessionManager) HostPrefix() string {
+	return ""
 }
 
 // SetSessionManager allows the calling code to inject a custom application

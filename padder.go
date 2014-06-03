@@ -6,6 +6,7 @@ package wc
 
 import (
 	"bytes"
+	"encoding/json"
 	"html/template"
 	"net/http"
 )
@@ -54,6 +55,22 @@ type messageData struct {
 type xmlhttpMessageData struct {
 	UTF8Length int
 	Message    []byte
+}
+
+func jsonArray(vals ...interface{}) []byte {
+	replyJSON, err := json.Marshal(vals)
+	if err != nil {
+		panic(err)
+	}
+	return replyJSON
+}
+
+func jsonObject(vals map[string]interface{}) []byte {
+	replyJSON, err := json.Marshal(vals)
+	if err != nil {
+		panic(err)
+	}
+	return replyJSON
 }
 
 func guessType(r *http.Request) paddingType {
@@ -134,6 +151,5 @@ func (p *padder) end() error {
 		}
 		p.f.Flush()
 	}
-	// TODO(hochhaus): ensure that handler funcs return (to force end chunk)
 	return nil
 }
