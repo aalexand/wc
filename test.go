@@ -15,9 +15,9 @@ const (
 	testDelay       = 2
 )
 
-// TODO(ahochhaus): Do not write using chunk() interface
 func testPhase1(p *padder) {
 	p.t = none
+	// TODO(ahochhaus): Do not write using chunk() interface
 	p.chunk(jsonArray(sm.HostPrefix()))
 	p.end()
 }
@@ -26,12 +26,12 @@ func testPhase2(p *padder) {
 	if p.t == length {
 		p.t = none
 	}
-	err := p.chunk([]byte(testFirstChunk))
+	err := p.chunk(testFirstChunk)
 	if err != nil {
 		return
 	}
 	time.Sleep(testDelay * time.Second)
-	p.chunk([]byte(testSecondChunk))
+	p.chunk(testSecondChunk)
 	p.end()
 }
 

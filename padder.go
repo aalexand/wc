@@ -5,10 +5,11 @@
 package wc
 
 import (
-	"bytes"
 	"encoding/json"
+	"fmt"
 	"html/template"
 	"net/http"
+	"unicode/utf8"
 )
 
 type paddingType int
@@ -31,9 +32,6 @@ var (
 		"<script>try{parent.m('{{.Message}}')}catch(e){}</script>\n"))
 	scriptEnd = template.Must(template.New("").Parse(
 		"<script>try{parent.d()}catch(e){}</script>\n"))
-
-	xmlhttpMessage = template.Must(template.New("").Parse(
-		"{{.UTF8Length}}\n{{.Message}}"))
 )
 
 type padder struct {
@@ -52,25 +50,20 @@ type messageData struct {
 	Message string
 }
 
-type xmlhttpMessageData struct {
-	UTF8Length int
-	Message    []byte
-}
-
-func jsonArray(vals ...interface{}) []byte {
+func jsonArray(vals ...interface{}) string {
 	replyJSON, err := json.Marshal(vals)
 	if err != nil {
 		panic(err)
 	}
-	return replyJSON
+	return string(replyJSON)
 }
 
-func jsonObject(vals map[string]interface{}) []byte {
+func jsonObject(vals map[string]interface{}) string {
 	replyJSON, err := json.Marshal(vals)
 	if err != nil {
 		panic(err)
 	}
-	return replyJSON
+	return string(replyJSON)
 }
 
 func guessType(r *http.Request) paddingType {
@@ -111,7 +104,7 @@ func (p *padder) start() error {
 	return nil
 }
 
-func (p *padder) chunk(b []byte) error {
+func (p *padder) chunk(b string) error {
 	if !p.setup {
 		if err := p.start(); err != nil {
 			return err
@@ -119,18 +112,17 @@ func (p *padder) chunk(b []byte) error {
 	}
 	switch p.t {
 	case script:
-		d := messageData{string(b)}
+		d := messageData{b}
 		if err := scriptMessage.Execute(p.w, d); err != nil {
 			return err
 		}
 	case length:
-		utf8Length := len(bytes.Runes(b))
-		d := xmlhttpMessageData{utf8Length, b}
-		if err := xmlhttpMessage.Execute(p.w, d); err != nil {
+		utf8Length := utf8.RuneCountInString(b)
+		if _, err := fmt.Fprintf(p.w, "%d\n%s", utf8Length, b); err != nil {
 			return err
 		}
 	default:
-		if _, err := p.w.Write(b); err != nil {
+		if _, err := p.w.Write([]byte(b)); err != nil {
 			return err
 		}
 	}

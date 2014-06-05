@@ -25,6 +25,10 @@ type sessionWrapper struct {
 	backChannelPresent      bool
 }
 
+func init() {
+	sessionWrapperMap = make(map[string]*sessionWrapper)
+}
+
 // Special cases to think about:
 // * duplicate back channel
 // * noop message on back channel
@@ -151,34 +155,47 @@ func terminateHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("Terminated"))
 }
 
+func newSessionHandler(w http.ResponseWriter, r *http.Request) {
+	sessWrap, err := newSession(r)
+	if err != nil {
+		sm.Error(r, err)
+		http.Error(w, "Unable to create SID", http.StatusInternalServerError)
+		return
+	}
+
+	// create session message: ["c",sessionId,hostPrefix_,negotiatedVersion]
+	msg := []interface{}{
+		0,
+		[]interface{}{
+			"c",
+			sessWrap.SID(),
+			sm.HostPrefix(),
+			8,
+		},
+	}
+
+	// TODO(hochhaus): Flush pending backchannel messages.
+
+	p := newPadder(w, r)
+	// TODO(hochhaus): Don't use chunked HTTP interface
+	p.chunk(jsonArray(msg))
+	p.end()
+}
+
 func forwardChannelHandler(w http.ResponseWriter, r *http.Request) {
-	var sessWrap *sessionWrapper
-	var err error
-	if r.FormValue("SID") == "" {
-		sessWrap, err = newSession(r)
-		if err != nil {
-			sm.Error(r, err)
-			http.Error(w, "Unable to create SID", http.StatusInternalServerError)
-			return
+	sessWrap, err := getSession(r)
+	if err != nil {
+		sm.Error(r, err)
+		switch {
+		case err == ErrUnknownSID:
+			// Special case 'Unknown SID' to be compatible with JS impl. See
+			// goog.labs.net.webChannel.ChannelRequest#onXmlHttpReadyStateChanged_
+			// for more details.
+			http.Error(w, ErrUnknownSID.Error(), 400)
+		default:
+			http.Error(w, "Unable to locate SID", http.StatusInternalServerError)
 		}
-		// TODO(hochhaus): Add message ID = 0 with value
-		// ["c","5432123456789012","b",8]
-		// ["c",sessionId,hostPrefix_,negotiatedVersion]
-	} else {
-		sessWrap, err = getSession(r)
-		if err != nil {
-			sm.Error(r, err)
-			switch {
-			case err == ErrUnknownSID:
-				// Special case 'Unknown SID' to be compatible with JS impl. See
-				// goog.labs.net.webChannel.ChannelRequest#onXmlHttpReadyStateChanged_
-				// for more details.
-				http.Error(w, ErrUnknownSID.Error(), 400)
-			default:
-				http.Error(w, "Unable to locate SID", http.StatusInternalServerError)
-			}
-			return
-		}
+		return
 	}
 
 	count, err := strconv.Atoi(r.PostFormValue("count"))
@@ -187,30 +204,34 @@ func forwardChannelHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unable to parse count", 400)
 		return
 	}
-	offset, err := strconv.Atoi(r.PostFormValue("ofs"))
-	if err != nil {
-		sm.Error(r, err)
-		http.Error(w, "Unable to parse ofs", 400)
-		return
-	}
 
 	msgs := []*Message{}
-	for i := 0; i < count; i++ {
-		req := fmt.Sprintf("req%d", i)
-		jsonMap := make(map[string]interface{})
-		for key, value := range r.PostForm {
-			keyParts := strings.SplitN(key, "_", 2)
-			if len(keyParts) < 2 || keyParts[0] != req {
+	if count > 0 {
+		offset, err := strconv.Atoi(r.PostFormValue("ofs"))
+		if err != nil {
+			sm.Error(r, err)
+			http.Error(w, "Unable to parse ofs", 400)
+			return
+		}
+
+		for i := 0; i < count; i++ {
+			req := fmt.Sprintf("req%d", i)
+			jsonMap := make(map[string]interface{})
+			for key, value := range r.PostForm {
+				keyParts := strings.SplitN(key, "_", 2)
+				if len(keyParts) < 2 || keyParts[0] != req {
+					continue
+				}
+				jsonMap[keyParts[1]] = value
+			}
+			effectiveID := offset + i
+			if effectiveID <= sessWrap.si.ForwardChannelAID {
+				// skip incoming messages which have already been received
 				continue
 			}
-			jsonMap[keyParts[1]] = value
+			msgs = append(msgs,
+				&Message{ID: offset + i, Body: []byte(jsonObject(jsonMap))})
 		}
-		effectiveID := offset + i
-		if effectiveID <= sessWrap.si.ForwardChannelAID {
-			// skip incoming messages which have already been received
-			continue
-		}
-		msgs = append(msgs, &Message{ID: offset + i, Body: jsonObject(jsonMap)})
 	}
 
 	if len(msgs) > 0 {
@@ -222,19 +243,15 @@ func forwardChannelHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if r.FormValue("SID") == "" {
-		// TODO(hochhaus): No back channel, so we must flush to forward channel.
-	} else {
-		reply := []interface{}{
-			sessWrap.backChannelPresent,
-			sessWrap.si.BackChannelAID,
-			sessWrap.si.BachChannelBytes,
-		}
-		// TODO(ahochhaus): Do not write using chunk() interface
-		p := newPadder(w, r)
-		p.chunk(jsonArray(reply))
-		p.end()
+	reply := []interface{}{
+		sessWrap.backChannelPresent,
+		sessWrap.si.BackChannelAID,
+		sessWrap.si.BachChannelBytes,
 	}
+	p := newPadder(w, r)
+	// TODO(ahochhaus): Do not write using chunk() interface
+	p.chunk(jsonArray(reply))
+	p.end()
 }
 
 // BindHandler handles forward and backward channel HTTP requests. When using
@@ -244,11 +261,13 @@ func BindHandler(w http.ResponseWriter, r *http.Request) {
 	if sm == nil {
 		panic("No SessionManager provided")
 	}
-	switch r.FormValue("TYPE") {
-	case "xmlhttp", "html":
+	switch {
+	case r.FormValue("TYPE") == "xmlhttp" || r.FormValue("TYPE") == "html":
 		backChannelHandler(w, r)
-	case "terminate":
+	case r.FormValue("TYPE") == "terminate":
 		terminateHandler(w, r)
+	case r.FormValue("SID") == "":
+		newSessionHandler(w, r)
 	default:
 		forwardChannelHandler(w, r)
 	}
