@@ -17,9 +17,7 @@ const (
 
 func testPhase1(p *padder) {
 	p.t = none
-	// TODO(ahochhaus): Do not write using chunk() interface
-	p.chunk(jsonArray(sm.HostPrefix()))
-	p.end()
+	p.write(jsonArray(sm.HostPrefix()))
 }
 
 func testPhase2(p *padder) {

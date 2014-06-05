@@ -105,7 +105,7 @@ func (p *padder) start() error {
 	return nil
 }
 
-func (p *padder) chunkMessages(msgs []*Message) error {
+func (p *padder) prepMessages(msgs []*Message) string {
 	buf := new(bytes.Buffer)
 	buf.Write([]byte("["))
 	for i, msg := range msgs {
@@ -115,10 +115,36 @@ func (p *padder) chunkMessages(msgs []*Message) error {
 		fmt.Fprintf(buf, "[%d,%s]", msg.ID, msg.Body)
 	}
 	buf.Write([]byte("]"))
-	return p.chunk(buf.String())
+	return buf.String()
+}
+
+func (p *padder) chunkMessages(msgs []*Message) error {
+	return p.chunk(p.prepMessages(msgs))
+}
+
+func (p *padder) writeMessages(msgs []*Message) error {
+	return p.write(p.prepMessages(msgs))
 }
 
 func (p *padder) chunk(b string) error {
+	if err := p.writeInternal(b); err != nil {
+		return err
+	}
+	p.f.Flush()
+	return nil
+}
+
+func (p *padder) write(b string) error {
+	if err := p.writeInternal(b); err != nil {
+		return err
+	}
+	if err := p.end(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (p *padder) writeInternal(b string) error {
 	if !p.setup {
 		if err := p.start(); err != nil {
 			return err
@@ -140,7 +166,6 @@ func (p *padder) chunk(b string) error {
 			return err
 		}
 	}
-	p.f.Flush()
 	return nil
 }
 

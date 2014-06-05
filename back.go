@@ -22,7 +22,7 @@ func newBackChannelRegister(
 }
 
 func backChannelHandler(w http.ResponseWriter, r *http.Request) {
-	sessWrap, err := getSession(r)
+	sw, err := getSession(r)
 	if err != nil {
 		sm.Error(r, err)
 		switch {
@@ -38,7 +38,7 @@ func backChannelHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	c := newBackChannelRegister(w, r)
-	sessWrap.newBackChannelNotifier <- c
+	sw.newBackChannelNotifier <- c
 	// Block returning until backchannel is no longer used
 	<-c.done
 }

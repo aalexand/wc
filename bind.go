@@ -47,29 +47,29 @@ func getSession(r *http.Request) (*sessionWrapper, error) {
 	mutex.Lock()
 	defer mutex.Unlock()
 	sid := r.FormValue("SID")
-	if sessWrap, hasSession := sessionWrapperMap[sid]; hasSession {
-		return sessWrap, nil
+	if sw, hasSession := sessionWrapperMap[sid]; hasSession {
+		return sw, nil
 	}
 	session, si, err := sm.LookupSession(sid)
 	if err != nil {
 		return nil, err
 	}
 
-	sessWrap := &sessionWrapper{
+	sw := &sessionWrapper{
 		session,
 		si,
 		make(chan *backChannelRegister),
 		make(chan struct{}),
 		false,
 	}
-	go sessionWorker(sessWrap)
+	go sessionWorker(sw)
 
-	sessionWrapperMap[sid] = sessWrap
-	return sessWrap, nil
+	sessionWrapperMap[sid] = sw
+	return sw, nil
 }
 
 func terminateHandler(w http.ResponseWriter, r *http.Request) {
-	sessWrap, err := getSession(r)
+	sw, err := getSession(r)
 	switch {
 	case err == ErrUnknownSID:
 		w.Write([]byte("Terminated"))
@@ -79,7 +79,7 @@ func terminateHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unable to locate SID", http.StatusInternalServerError)
 		return
 	}
-	sid := sessWrap.SID()
+	sid := sw.SID()
 	err = sm.TerminatedSession(sid, ClientTerminateRequest)
 	if err != nil {
 		sm.Error(r, err)
@@ -87,7 +87,7 @@ func terminateHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	close(sessWrap.clientTerminateNotifier)
+	close(sw.clientTerminateNotifier)
 
 	mutex.Lock()
 	delete(sessionWrapperMap, sid)

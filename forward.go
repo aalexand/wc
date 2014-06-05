@@ -19,21 +19,21 @@ func newSession(r *http.Request) (*sessionWrapper, error) {
 		return nil, err
 	}
 
-	sessWrap := &sessionWrapper{
+	sw := &sessionWrapper{
 		session,
 		&SessionInfo{-1, 0, -1},
 		make(chan *backChannelRegister),
 		make(chan struct{}),
 		false,
 	}
-	go sessionWorker(sessWrap)
+	go sessionWorker(sw)
 
-	sessionWrapperMap[session.SID()] = sessWrap
-	return sessWrap, nil
+	sessionWrapperMap[session.SID()] = sw
+	return sw, nil
 }
 
 func newSessionHandler(w http.ResponseWriter, r *http.Request) {
-	sessWrap, err := newSession(r)
+	sw, err := newSession(r)
 	if err != nil {
 		sm.Error(r, err)
 		http.Error(w, "Unable to create SID", http.StatusInternalServerError)
@@ -43,20 +43,28 @@ func newSessionHandler(w http.ResponseWriter, r *http.Request) {
 	msgs := []*Message{
 		// create session message: ["c",sessionId,hostPrefix_,negotiatedVersion]
 		&Message{0, []byte(jsonArray(
-			[]interface{}{"c", sessWrap.SID(), sm.HostPrefix(), 8},
+			[]interface{}{"c", sw.SID(), sm.HostPrefix(), 8},
 		))},
 	}
 
-	// TODO(hochhaus): Flush pending backchannel messages.
+	if sw.si.BachChannelBytes > 0 {
+		peekMsgs, err := sw.BackChannelPeek()
+		if err != nil {
+			sm.Error(r, err)
+			http.Error(w, "Unable to get messages", http.StatusInternalServerError)
+			return
+		}
+		for _, msg := range peekMsgs {
+			msgs = append(msgs, msg)
+		}
+	}
 
 	p := newPadder(w, r)
-	// TODO(hochhaus): Don't use chunked HTTP interface
-	p.chunkMessages(msgs)
-	p.end()
+	p.writeMessages(msgs)
 }
 
 func forwardChannelHandler(w http.ResponseWriter, r *http.Request) {
-	sessWrap, err := getSession(r)
+	sw, err := getSession(r)
 	if err != nil {
 		sm.Error(r, err)
 		switch {
@@ -98,7 +106,7 @@ func forwardChannelHandler(w http.ResponseWriter, r *http.Request) {
 				jsonMap[keyParts[1]] = value
 			}
 			effectiveID := offset + i
-			if effectiveID <= sessWrap.si.ForwardChannelAID {
+			if effectiveID <= sw.si.ForwardChannelAID {
 				// skip incoming messages which have already been received
 				continue
 			}
@@ -108,7 +116,7 @@ func forwardChannelHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(msgs) > 0 {
-		err = sessWrap.ForwardChannel(msgs)
+		err = sw.ForwardChannel(msgs)
 		if err != nil {
 			sm.Error(r, err)
 			http.Error(w, "Incoming message error", http.StatusInternalServerError)
@@ -117,12 +125,10 @@ func forwardChannelHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	reply := []interface{}{
-		sessWrap.backChannelPresent,
-		sessWrap.si.BackChannelAID,
-		sessWrap.si.BachChannelBytes,
+		sw.backChannelPresent,
+		sw.si.BackChannelAID,
+		sw.si.BachChannelBytes,
 	}
 	p := newPadder(w, r)
-	// TODO(ahochhaus): Do not write using chunk() interface
-	p.chunk(jsonArray(reply))
-	p.end()
+	p.write(jsonArray(reply))
 }
