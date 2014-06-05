@@ -109,7 +109,7 @@ type Session interface {
 	// client (to avoid long lived idle backchannels from being terminated by
 	// some network hardware/proxies) it is safe to always return
 	// ErrDropTransientMessage from this method.
-	BackChannelAdd(*Message) error
+	BackChannelAdd(MessageBody []byte) error
 
 	// ForwardChannel passes the set of messages delivered from the client to the
 	// application for persistent storage (eg: being added to a "MessageQueue"
@@ -155,7 +155,7 @@ func (s *DefaultSession) BackChannelOpen() {
 }
 
 // BackChannelAdd drops all messages instead of adding them to the queue.
-func (s *DefaultSession) BackChannelAdd(*Message) error {
+func (s *DefaultSession) BackChannelAdd(MessageBody []byte) error {
 	return ErrDropTransientMessage
 }
 
