@@ -15,9 +15,15 @@ func shouldNOOP(br *backChannelRegister) bool {
 	return br != nil && br.r.FormValue("CI") != "1"
 }
 
-func flushPending(p *padder, msgs []*Message) error {
-	// TODO(ahochhaus)
-	return nil
+func flushPending(sw *sessionWrapper, p *padder) error {
+	if sw.si.BachChannelBytes == 0 {
+		return nil
+	}
+	msgs, err := sw.BackChannelPeek()
+	if err != nil {
+		return err
+	}
+	return p.chunkMessages(msgs)
 }
 
 func sessionWorker(sw *sessionWrapper) {
@@ -75,9 +81,6 @@ func sessionWorker(sw *sessionWrapper) {
 				sm.Error(tempBR.r, errors.New("Duplicate backchannel."))
 				close(br.done)
 			}
-			// TODO(hochhaus): flush pending messages
-			noopTimer.Reset(30 * time.Second)
-			longBackChannelTimer.Reset(4 * 60 * time.Second)
 			br = tempBR
 			p = newPadder(tempBR.w, tempBR.r)
 			cn, ok := br.w.(http.CloseNotifier)
@@ -85,25 +88,38 @@ func sessionWorker(sw *sessionWrapper) {
 				panic("webserver doesn't support close notification")
 			}
 			backChannelCloseNotifier = cn.CloseNotify()
+			noopTimer.Reset(30 * time.Second)
+			longBackChannelTimer.Reset(4 * 60 * time.Second)
 			sw.BackChannelOpen()
+			if err := flushPending(sw, p); err != nil {
+				sm.Error(br.r, err)
+			}
 		case sa := <-sw.Notifier():
 			switch {
 			case sa == ServerTerminate:
 				if br != nil {
-					// Add "stop" message directly so that calling application cannot
-					// reject it.
-					sw.BackChannelAdd([]byte("[\"stop\"]"))
-					// TODO(hochhaus): Send "stop" message to client
+					// Write ["stop"] message directly to avoid application rejecting it.
+					msgs := []*Message{
+						&Message{0, []byte(jsonArray([]interface{}{"stop"}))},
+					}
+					p.chunkMessages(msgs)
+					p.end()
 					sw.BackChannelClose()
 					close(br.done)
+					br = nil
+					p = nil
+					backChannelCloseNotifier = nil
+					noopTimer.Stop()
+					longBackChannelTimer.Stop()
 				}
-				// TODO(hochhaus): cleanup session state
 				break
 			case sa > 0:
 				// BackChannelActivity
 				sw.si.BachChannelBytes += int(sa)
 				if br != nil {
-					// TODO(hochhaus): flush pending messages
+					if err := flushPending(sw, p); err != nil {
+						sm.Error(br.r, err)
+					}
 				}
 			default:
 				log.Panicf("Unsupported SessionActivity: %d", sa)

@@ -54,9 +54,7 @@ func newSessionHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Unable to get messages", http.StatusInternalServerError)
 			return
 		}
-		for _, msg := range peekMsgs {
-			msgs = append(msgs, msg)
-		}
+		msgs = append(msgs, peekMsgs...)
 	}
 
 	p := newPadder(w, r)
@@ -103,7 +101,7 @@ func forwardChannelHandler(w http.ResponseWriter, r *http.Request) {
 				if len(keyParts) < 2 || keyParts[0] != req {
 					continue
 				}
-				jsonMap[keyParts[1]] = value
+				jsonMap[keyParts[1]] = value[0]
 			}
 			effectiveID := offset + i
 			if effectiveID <= sw.si.ForwardChannelAID {

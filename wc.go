@@ -77,6 +77,11 @@ type Message struct {
 	Body []byte
 }
 
+// NewMessage creates a new Message struct.
+func NewMessage(ID int, Body []byte) *Message {
+	return &Message{ID, Body}
+}
+
 // Session specifies the interface for the calling application to interact
 // with an individual WebChannel session. This is used to both modify the
 // Session and receive events from it. Only a single method will be invoked
@@ -86,7 +91,7 @@ type Session interface {
 
 	// Notifier provides the channel for application code to pass SessionActivity
 	// events for processing by WebChannel.
-	Notifier() <-chan SessionActivity
+	Notifier() chan SessionActivity
 
 	// BackChannelPeek returns a slice of all pending backchannel Messages.
 	BackChannelPeek() ([]*Message, error)
@@ -133,7 +138,7 @@ type SessionInfo struct {
 // ForwardChannel().
 type DefaultSession struct {
 	SessionID string
-	notifier  <-chan SessionActivity
+	notifier  chan SessionActivity
 }
 
 // SID return the SessionID field.
@@ -142,7 +147,7 @@ func (s *DefaultSession) SID() string {
 }
 
 // Notifier returns the DefaultSession notifier chan.
-func (s *DefaultSession) Notifier() <-chan SessionActivity {
+func (s *DefaultSession) Notifier() chan SessionActivity {
 	return s.notifier
 }
 
