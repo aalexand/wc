@@ -9,23 +9,6 @@ import (
 	"sync"
 )
 
-var (
-	mutex             sync.Mutex
-	sessionWrapperMap map[string]*sessionWrapper
-)
-
-type sessionWrapper struct {
-	Session
-	si                      *SessionInfo
-	newBackChannelNotifier  chan *backChannelRegister
-	clientTerminateNotifier chan struct{}
-	backChannelPresent      bool
-}
-
-func init() {
-	sessionWrapperMap = make(map[string]*sessionWrapper)
-}
-
 // Special cases to think about:
 // * duplicate back channel
 // * noop message on back channel
@@ -43,6 +26,50 @@ func init() {
 // * restart server without dropping back channels
 // * expvar stats: # sessions, # backchannels, # pending messages, etc
 
+var (
+	mutex             sync.Mutex
+	sessionWrapperMap map[string]*sessionWrapper
+)
+
+type sessionWrapper struct {
+	Session
+	si          *SessionInfo
+	reqNotifier chan *reqRegister
+}
+
+type reqRegister struct {
+	w    http.ResponseWriter
+	r    *http.Request
+	done chan struct{}
+}
+
+func newReqRegister(w http.ResponseWriter, r *http.Request) *reqRegister {
+	return &reqRegister{w, r, make(chan struct{})}
+}
+
+func init() {
+	sessionWrapperMap = make(map[string]*sessionWrapper)
+}
+
+func newSession(r *http.Request) (*sessionWrapper, error) {
+	mutex.Lock()
+	defer mutex.Unlock()
+	session, err := sm.NewSession(r)
+	if err != nil {
+		return nil, err
+	}
+
+	sw := &sessionWrapper{
+		session,
+		&SessionInfo{-1, 0, -1},
+		make(chan *reqRegister),
+	}
+	go sessionWorker(sw)
+
+	sessionWrapperMap[session.SID()] = sw
+	return sw, nil
+}
+
 func getSession(r *http.Request) (*sessionWrapper, error) {
 	mutex.Lock()
 	defer mutex.Unlock()
@@ -55,45 +82,11 @@ func getSession(r *http.Request) (*sessionWrapper, error) {
 		return nil, err
 	}
 
-	sw := &sessionWrapper{
-		session,
-		si,
-		make(chan *backChannelRegister),
-		make(chan struct{}),
-		false,
-	}
+	sw := &sessionWrapper{session, si, make(chan *reqRegister)}
 	go sessionWorker(sw)
 
 	sessionWrapperMap[sid] = sw
 	return sw, nil
-}
-
-func terminateHandler(w http.ResponseWriter, r *http.Request) {
-	sw, err := getSession(r)
-	switch {
-	case err == ErrUnknownSID:
-		w.Write([]byte("Terminated"))
-		return
-	case err != nil:
-		sm.Error(r, err)
-		http.Error(w, "Unable to locate SID", http.StatusInternalServerError)
-		return
-	}
-	sid := sw.SID()
-	err = sm.TerminatedSession(sid, ClientTerminateRequest)
-	if err != nil {
-		sm.Error(r, err)
-		http.Error(w, "Unable to terminate", http.StatusInternalServerError)
-		return
-	}
-
-	close(sw.clientTerminateNotifier)
-
-	mutex.Lock()
-	delete(sessionWrapperMap, sid)
-	mutex.Unlock()
-
-	w.Write([]byte("Terminated"))
 }
 
 // BindHandler handles forward and backward channel HTTP requests. When using
@@ -103,14 +96,28 @@ func BindHandler(w http.ResponseWriter, r *http.Request) {
 	if sm == nil {
 		panic("No SessionManager provided")
 	}
+	var sw *sessionWrapper
+	var err error
 	switch {
-	case r.FormValue("TYPE") == "xmlhttp" || r.FormValue("TYPE") == "html":
-		backChannelHandler(w, r)
-	case r.FormValue("TYPE") == "terminate":
-		terminateHandler(w, r)
 	case r.FormValue("SID") == "":
-		newSessionHandler(w, r)
+		sw, err = newSession(r)
 	default:
-		forwardChannelHandler(w, r)
+		sw, err = getSession(r)
 	}
+	if err != nil {
+		sm.Error(r, err)
+		switch {
+		case err == ErrUnknownSID:
+			// Special case 'Unknown SID' to be compatible with JS impl. See
+			// goog.labs.net.webChannel.ChannelRequest#onXmlHttpReadyStateChanged_
+			// for more details.
+			http.Error(w, ErrUnknownSID.Error(), 400)
+		default:
+			http.Error(w, "Unable to locate SID", http.StatusInternalServerError)
+		}
+		return
+	}
+	rr := newReqRegister(w, r)
+	sw.reqNotifier <- rr
+	<-rr.done
 }

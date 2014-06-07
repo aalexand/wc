@@ -141,6 +141,11 @@ type DefaultSession struct {
 	notifier  chan SessionActivity
 }
 
+// NewDefaultSession initializes a DefaultSession object with the specified ID.
+func NewDefaultSession(sid string) *DefaultSession {
+	return &DefaultSession{sid, make(chan SessionActivity)}
+}
+
 // SID return the SessionID field.
 func (s *DefaultSession) SID() string {
 	return s.SessionID

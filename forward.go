@@ -11,35 +11,11 @@ import (
 	"strings"
 )
 
-func newSession(r *http.Request) (*sessionWrapper, error) {
-	mutex.Lock()
-	defer mutex.Unlock()
-	session, err := sm.NewSession(r)
-	if err != nil {
-		return nil, err
-	}
-
-	sw := &sessionWrapper{
-		session,
-		&SessionInfo{-1, 0, -1},
-		make(chan *backChannelRegister),
-		make(chan struct{}),
-		false,
-	}
-	go sessionWorker(sw)
-
-	sessionWrapperMap[session.SID()] = sw
-	return sw, nil
-}
-
-func newSessionHandler(w http.ResponseWriter, r *http.Request) {
-	sw, err := newSession(r)
-	if err != nil {
-		sm.Error(r, err)
-		http.Error(w, "Unable to create SID", http.StatusInternalServerError)
-		return
-	}
-
+func newSessionHandler(
+	sw *sessionWrapper,
+	w http.ResponseWriter,
+	r *http.Request,
+) {
 	msgs := []*Message{
 		// create session message: ["c",sessionId,hostPrefix_,negotiatedVersion]
 		&Message{0, []byte(jsonArray(
@@ -61,22 +37,12 @@ func newSessionHandler(w http.ResponseWriter, r *http.Request) {
 	p.writeMessages(msgs)
 }
 
-func forwardChannelHandler(w http.ResponseWriter, r *http.Request) {
-	sw, err := getSession(r)
-	if err != nil {
-		sm.Error(r, err)
-		switch {
-		case err == ErrUnknownSID:
-			// Special case 'Unknown SID' to be compatible with JS impl. See
-			// goog.labs.net.webChannel.ChannelRequest#onXmlHttpReadyStateChanged_
-			// for more details.
-			http.Error(w, ErrUnknownSID.Error(), 400)
-		default:
-			http.Error(w, "Unable to locate SID", http.StatusInternalServerError)
-		}
-		return
-	}
-
+func fcHandler(
+	sw *sessionWrapper,
+	hasBackChannel bool,
+	w http.ResponseWriter,
+	r *http.Request,
+) {
 	count, err := strconv.Atoi(r.PostFormValue("count"))
 	if err != nil {
 		sm.Error(r, err)
@@ -123,7 +89,7 @@ func forwardChannelHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	reply := []interface{}{
-		sw.backChannelPresent,
+		hasBackChannel,
 		sw.si.BackChannelAID,
 		sw.si.BachChannelBytes,
 	}
