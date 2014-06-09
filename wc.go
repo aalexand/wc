@@ -34,8 +34,6 @@ var (
 type SessionActivity int
 
 const (
-	// Note: Use negative numbers for all other SessionActivity
-
 	// ServerTerminate notifies wc the the given session should be terminated.
 	// Common use cases include Session timeouts, automatically logging a user
 	// out of the web application, or terminating a session out from under an
@@ -51,10 +49,6 @@ const (
 	// and a session which was previously being processed (and would have been
 	// timed-out) it not used again after the application restarts.
 	ServerTerminate SessionActivity = 0
-
-	// A positive number represents BackChannelActivity which notifies wc that
-	// the given session has X additional pending bytes which should be flushed
-	// to the next available backchannel.
 )
 
 // TerminationReason denotes the reason a session is being terminated.
@@ -92,6 +86,12 @@ type Session interface {
 	// Notifier provides the channel for application code to pass SessionActivity
 	// events for processing by WebChannel.
 	Notifier() chan SessionActivity
+
+	// DataNotifier() provides a channel for application code to pass byte counts
+	// each time new BackChannel data arrives. Writes to this session will not
+	// block so it is safe to write to this channel even from inside the
+	// session's go routine (for example from the ForwardChannel() callback).
+	DataNotifier() chan int
 
 	// BackChannelPeek returns a slice of all pending backchannel Messages.
 	BackChannelPeek() ([]*Message, error)
@@ -137,13 +137,14 @@ type SessionInfo struct {
 // Callers must implement at least BackChannel(), AckBackChannelThrough() and
 // ForwardChannel().
 type DefaultSession struct {
-	SessionID string
-	notifier  chan SessionActivity
+	SessionID    string
+	notifier     chan SessionActivity
+	dataNotifier chan int
 }
 
 // NewDefaultSession initializes a DefaultSession object with the specified ID.
 func NewDefaultSession(sid string) *DefaultSession {
-	return &DefaultSession{sid, make(chan SessionActivity)}
+	return &DefaultSession{sid, make(chan SessionActivity), make(chan int)}
 }
 
 // SID return the SessionID field.
@@ -154,6 +155,11 @@ func (s *DefaultSession) SID() string {
 // Notifier returns the DefaultSession notifier chan.
 func (s *DefaultSession) Notifier() chan SessionActivity {
 	return s.notifier
+}
+
+// DataNotifier returns the DefaultSession notifier chan.
+func (s *DefaultSession) DataNotifier() chan int {
+	return s.dataNotifier
 }
 
 // BackChannelClose provides a noop implementation.

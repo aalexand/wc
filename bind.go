@@ -64,7 +64,7 @@ func newSession(r *http.Request) (*sessionWrapper, error) {
 		&SessionInfo{-1, 0, -1},
 		make(chan *reqRegister),
 	}
-	go sessionWorker(sw)
+	launchSession(sw)
 
 	sessionWrapperMap[session.SID()] = sw
 	return sw, nil
@@ -83,7 +83,7 @@ func getSession(r *http.Request) (*sessionWrapper, error) {
 	}
 
 	sw := &sessionWrapper{session, si, make(chan *reqRegister)}
-	go sessionWorker(sw)
+	launchSession(sw)
 
 	sessionWrapperMap[sid] = sw
 	return sw, nil

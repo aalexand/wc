@@ -26,14 +26,32 @@ func flushPending(sw *sessionWrapper, p *padder) error {
 	return p.chunkMessages(msgs)
 }
 
-func terminateHandler(
-	sw *sessionWrapper,
-	w http.ResponseWriter,
-	r *http.Request,
-) {
+func launchSession(sw *sessionWrapper) {
+	activityNotifier := make(chan int)
+	go sessionWorker(sw, activityNotifier)
+	go activityProxyWorker(sw, activityNotifier)
 }
 
-func sessionWorker(sw *sessionWrapper) {
+func activityProxyWorker(sw *sessionWrapper, activityNotifier chan int) {
+	var an chan int
+	var proxiedByteCount int
+	for {
+		select {
+		case i := <-sw.DataNotifier():
+			log.Printf("  activityProxyWorker: %s buffered: %d", sw.SID(), i)
+			proxiedByteCount += i
+			if proxiedByteCount > 0 {
+				an = activityNotifier
+			}
+		case an <- proxiedByteCount:
+			log.Printf("  activityProxyWorker: %s sent: %d", sw.SID(), proxiedByteCount)
+			proxiedByteCount = 0
+			an = nil
+		}
+	}
+}
+
+func sessionWorker(sw *sessionWrapper, activityNotifier chan int) {
 	noopTimer := time.NewTimer(30 * time.Second)
 	noopTimer.Stop()
 	longBackChannelTimer := time.NewTimer(4 * 60 * time.Second)
@@ -152,16 +170,16 @@ func sessionWorker(sw *sessionWrapper) {
 					longBackChannelTimer.Stop()
 				}
 				break
-			case sa > 0:
-				// BackChannelActivity
-				sw.si.BachChannelBytes += int(sa)
-				if bc != nil {
-					if err := flushPending(sw, p); err != nil {
-						sm.Error(bc.r, err)
-					}
-				}
 			default:
 				log.Panicf("Unsupported SessionActivity: %d", sa)
+			}
+		case sa := <-activityNotifier:
+			// BackChannelActivity
+			sw.si.BachChannelBytes += sa
+			if bc != nil {
+				if err := flushPending(sw, p); err != nil {
+					sm.Error(bc.r, err)
+				}
 			}
 		}
 	}
