@@ -103,6 +103,7 @@ func sessionWorker(sw *sessionWrapper, activityNotifier chan int) {
 			switch {
 			case reqRequest.r.FormValue("TYPE") == "xmlhttp" ||
 				reqRequest.r.FormValue("TYPE") == "html":
+				log.Printf("  %s: back channel", sw.SID())
 				if bc != nil {
 					sw.BackChannelClose()
 					sm.Error(reqRequest.r, errors.New("Duplicate backchannel."))
@@ -123,6 +124,7 @@ func sessionWorker(sw *sessionWrapper, activityNotifier chan int) {
 				}
 
 			case reqRequest.r.FormValue("TYPE") == "terminate":
+				log.Printf("  %s: terminate", sw.SID())
 				sid := sw.SID()
 				err := sm.TerminatedSession(sid, ClientTerminateRequest)
 				if err != nil {
@@ -145,9 +147,14 @@ func sessionWorker(sw *sessionWrapper, activityNotifier chan int) {
 				break
 
 			case reqRequest.r.FormValue("SID") == "":
+				log.Printf("  %s: (new session) forward channel", sw.SID())
 				newSessionHandler(sw, reqRequest.w, reqRequest.r)
+				reqRequest.done <- struct{}{}
+
 			default:
+				log.Printf("  %s: forward channel", sw.SID())
 				fcHandler(sw, bc != nil, reqRequest.w, reqRequest.r)
+				reqRequest.done <- struct{}{}
 			}
 
 		case sa := <-sw.Notifier():
