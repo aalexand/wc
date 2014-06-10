@@ -5,6 +5,7 @@
 package wc
 
 import (
+	"fmt"
 	"net/http"
 	"sync"
 )
@@ -49,6 +50,10 @@ func newReqRegister(w http.ResponseWriter, r *http.Request) *reqRegister {
 
 func init() {
 	sessionWrapperMap = make(map[string]*sessionWrapper)
+}
+
+func debug(format string, a ...interface{}) {
+	sm.Debug(fmt.Sprintf(format, a...))
 }
 
 func newSession(r *http.Request) (*sessionWrapper, error) {

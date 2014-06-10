@@ -16,21 +16,17 @@ func newSessionHandler(
 	w http.ResponseWriter,
 	r *http.Request,
 ) {
-	msgs := []*Message{
-		// create session message: ["c",sessionId,hostPrefix_,negotiatedVersion]
-		&Message{0, []byte(jsonArray(
-			[]interface{}{"c", sw.SID(), sm.HostPrefix(), 8},
-		))},
-	}
+	createMsg := []byte(jsonArray(
+		[]interface{}{"c", sw.SID(), sm.HostPrefix(), 8},
+	))
+	err := sw.BackChannelAdd(createMsg)
+	sw.si.BackChannelBytes += len(createMsg)
 
-	if sw.si.BachChannelBytes > 0 {
-		peekMsgs, err := sw.BackChannelPeek()
-		if err != nil {
-			sm.Error(r, err)
-			http.Error(w, "Unable to get messages", http.StatusInternalServerError)
-			return
-		}
-		msgs = append(msgs, peekMsgs...)
+	msgs, err := sw.BackChannelPeek()
+	if err != nil {
+		sm.Error(r, err)
+		http.Error(w, "Unable to get messages", http.StatusInternalServerError)
+		return
 	}
 
 	p := newPadder(w, r)
@@ -74,8 +70,10 @@ func fcHandler(
 				// skip incoming messages which have already been received
 				continue
 			}
-			msgs = append(msgs,
-				&Message{ID: offset + i, Body: []byte(jsonObject(jsonMap))})
+			msg := &Message{ID: offset + i, Body: []byte(jsonObject(jsonMap))}
+			msgs = append(msgs, msg)
+			debug("wc: %s new forward channel message %d %s", sw.SID(), msg.ID,
+				msg.Body)
 		}
 	}
 
@@ -91,7 +89,7 @@ func fcHandler(
 	reply := []interface{}{
 		hasBackChannel,
 		sw.si.BackChannelAID,
-		sw.si.BachChannelBytes,
+		sw.si.BackChannelBytes,
 	}
 	p := newPadder(w, r)
 	p.write(jsonArray(reply))

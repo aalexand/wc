@@ -21,11 +21,6 @@ var (
 	// known to the server.
 	ErrUnknownSID = errors.New("wc: Unknown SID")
 
-	// ErrDropTransientMessage is the error to be returned when the given noop
-	// message has not been added to the pending backchannel queue by the request
-	// of the application (as opposed to an unintentional error)
-	ErrDropTransientMessage = errors.New("wc: Drop Transient Message")
-
 	sm SessionManager
 )
 
@@ -109,12 +104,12 @@ type Session interface {
 	// be garbage collected.
 	BackChannelACKThrough(ID int) error
 
-	// BackChannelAdd adds the message to into the pending backchannel queue. If
-	// your application does not need "noop" messages sent from the server to the
-	// client (to avoid long lived idle backchannels from being terminated by
-	// some network hardware/proxies) it is safe to always return
-	// ErrDropTransientMessage from this method.
-	BackChannelAdd(MessageBody []byte) error
+	// BackChannelAdd adds the message to into the pending backchannel queue.
+	// This functionality is necessary to support WebChannel internal messages
+	// such as "create", "noop" and "stop". These internal messages are passed to
+	// the application layer to allow for a shared message numbering scheme on
+	// the wire and application level.
+	BackChannelAdd(messageBody []byte) error
 
 	// ForwardChannel passes the set of messages delivered from the client to the
 	// application for persistent storage (eg: being added to a "MessageQueue"
@@ -130,12 +125,12 @@ type Session interface {
 // SessionInfo tracks the state related to which messages have been processed
 // on the forward and backward channels.
 type SessionInfo struct {
-	BackChannelAID, BachChannelBytes, ForwardChannelAID int
+	BackChannelAID, BackChannelBytes, ForwardChannelAID int
 }
 
 // DefaultSession provides a partial implementation of the Session interface.
-// Callers must implement at least BackChannel(), AckBackChannelThrough() and
-// ForwardChannel().
+// Callers must implement at least BackChannel(), AckBackChannelThrough(),
+// BackChannelAdd() and ForwardChannel().
 type DefaultSession struct {
 	SessionID    string
 	notifier     chan SessionActivity
@@ -168,11 +163,6 @@ func (s *DefaultSession) BackChannelClose() {
 
 // BackChannelOpen provides a noop implementation.
 func (s *DefaultSession) BackChannelOpen() {
-}
-
-// BackChannelAdd drops all messages instead of adding them to the queue.
-func (s *DefaultSession) BackChannelAdd(MessageBody []byte) error {
-	return ErrDropTransientMessage
 }
 
 // SessionManager specifies the interface for the calling application to
@@ -212,6 +202,10 @@ type SessionManager interface {
 	// Error logs internal failure conditions to application level code.
 	Error(r *http.Request, err error)
 
+	// Debug logs internal wc debugging messages. This is most useful to
+	// developers of wc.
+	Debug(string)
+
 	// HostPrefix is used on IE < 10 to circumvent same host connection limits.
 	//
 	// On the client, hostPrefix_ values will be passed to correctHostPrefix()
@@ -245,6 +239,12 @@ func (sm *DefaultSessionManager) LookupSession(sid string) (
 // Error logs to stderr.
 func (sm *DefaultSessionManager) Error(r *http.Request, err error) {
 	log.Print(err.Error())
+	panic("error")
+}
+
+// Debug discards debugging messages.
+func (sm *DefaultSessionManager) Debug(debug string) {
+	log.Print(debug)
 }
 
 // HostPrefix provides an empty host prefix.
