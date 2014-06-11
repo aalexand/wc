@@ -11,18 +11,19 @@ import (
 	"strings"
 )
 
-func newSessionHandler(
-	sw *sessionWrapper,
-	w http.ResponseWriter,
-	r *http.Request,
-) {
+func newSessionHandler(sw *sessionWrapper, reqRequest *reqRegister) {
+	debug("wc: %s forward channel (new session)", sw.SID())
+	defer func() {
+		reqRequest.done <- struct{}{}
+	}()
+
 	createMsg := []byte(jsonArray(
 		[]interface{}{"c", sw.SID(), sm.HostPrefix(), 8},
 	))
 	err := sw.BackChannelAdd(createMsg)
 	if err != nil {
-		sm.Error(r, err)
-		http.Error(w, "Unable to add create message to back channel",
+		sm.Error(reqRequest.r, err)
+		http.Error(reqRequest.w, "Unable to add create message to back channel",
 			http.StatusInternalServerError)
 		return
 	}
@@ -33,40 +34,47 @@ func newSessionHandler(
 
 	msgs, err := sw.BackChannelPeek()
 	if err != nil {
-		sm.Error(r, err)
-		http.Error(w, "Unable to get messages", http.StatusInternalServerError)
+		sm.Error(reqRequest.r, err)
+		http.Error(reqRequest.w, "Unable to get messages",
+			http.StatusInternalServerError)
 		return
 	}
 
-	p := newPadder(w, r)
+	p := newPadder(reqRequest.w, reqRequest.r)
 	p.writeMessages(msgs)
 }
 
-func fcHandler(
-	sw *sessionWrapper,
-	w http.ResponseWriter,
-	r *http.Request,
-) {
-	count, err := strconv.Atoi(r.PostFormValue("count"))
+func fcHandler(sw *sessionWrapper, reqRequest *reqRegister) {
+	debug("wc: %s forward channel", sw.SID())
+	defer func() {
+		reqRequest.done <- struct{}{}
+	}()
+
+	if !maybeACKBackChannel(sw, reqRequest.w, reqRequest.r, true) {
+		// HTTP error codes written directly in maybeACKBackChannel().
+		return
+	}
+
+	count, err := strconv.Atoi(reqRequest.r.PostFormValue("count"))
 	if err != nil {
-		sm.Error(r, err)
-		http.Error(w, "Unable to parse count", 400)
+		sm.Error(reqRequest.r, err)
+		http.Error(reqRequest.w, "Unable to parse count", 400)
 		return
 	}
 
 	msgs := []*Message{}
 	if count > 0 {
-		offset, err := strconv.Atoi(r.PostFormValue("ofs"))
+		offset, err := strconv.Atoi(reqRequest.r.PostFormValue("ofs"))
 		if err != nil {
-			sm.Error(r, err)
-			http.Error(w, "Unable to parse ofs", 400)
+			sm.Error(reqRequest.r, err)
+			http.Error(reqRequest.w, "Unable to parse ofs", 400)
 			return
 		}
 
 		for i := 0; i < count; i++ {
 			req := fmt.Sprintf("req%d", i)
 			jsonMap := make(map[string]interface{})
-			for key, value := range r.PostForm {
+			for key, value := range reqRequest.r.PostForm {
 				keyParts := strings.SplitN(key, "_", 2)
 				if len(keyParts) < 2 || keyParts[0] != req {
 					continue
@@ -88,8 +96,9 @@ func fcHandler(
 	if len(msgs) > 0 {
 		err = sw.ForwardChannel(msgs)
 		if err != nil {
-			sm.Error(r, err)
-			http.Error(w, "Incoming message error", http.StatusInternalServerError)
+			sm.Error(reqRequest.r, err)
+			http.Error(reqRequest.w, "Incoming message error",
+				http.StatusInternalServerError)
 			return
 		}
 	}
@@ -99,6 +108,6 @@ func fcHandler(
 		sw.si.BackChannelAID,
 		sw.backChannelBytes,
 	}
-	p := newPadder(w, r)
+	p := newPadder(reqRequest.w, reqRequest.r)
 	p.write(jsonArray(reply))
 }

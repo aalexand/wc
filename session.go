@@ -12,26 +12,6 @@ import (
 	"time"
 )
 
-func noop(sw *sessionWrapper) {
-	if sw.bc == nil {
-		debug("wc: %s noop skipped", sw.SID())
-		return
-	}
-
-	// if a non-buffered, active backchannel w/o pending data add noop
-	debug("wc: %s noop", sw.SID())
-	sw.noopTimer.Reset(30 * time.Second)
-
-	if err := sw.BackChannelAdd([]byte("[\"noop\"]")); err != nil {
-		sm.Error(sw.bc.r, err)
-		return
-	}
-	sw.backChannelBytes += 8
-	if err := flushPending(sw); err != nil {
-		sm.Error(sw.bc.r, err)
-	}
-}
-
 func flushPending(sw *sessionWrapper) error {
 	msgs, err := sw.BackChannelPeek()
 	if err != nil {
@@ -70,6 +50,103 @@ func flushPending(sw *sessionWrapper) error {
 		sw.longBackChannelTimer.Stop()
 	}
 	return nil
+}
+
+func noop(sw *sessionWrapper) {
+	if sw.bc == nil {
+		debug("wc: %s noop skipped", sw.SID())
+		return
+	}
+
+	// if a non-buffered, active backchannel w/o pending data add noop
+	debug("wc: %s noop", sw.SID())
+	sw.noopTimer.Reset(30 * time.Second)
+
+	if err := sw.BackChannelAdd([]byte("[\"noop\"]")); err != nil {
+		sm.Error(sw.bc.r, err)
+		return
+	}
+	sw.backChannelBytes += 8
+	if err := flushPending(sw); err != nil {
+		sm.Error(sw.bc.r, err)
+	}
+}
+
+func longBackChannel(sw *sessionWrapper) {
+	if sw.bc != nil {
+		debug("wc: %s closing long-lived back channel", sw.SID())
+		sw.p.end()
+		sw.BackChannelClose()
+		close(sw.bc.done)
+	}
+	sw.bc = nil
+	sw.p = nil
+	sw.backChannelCloseNotifier = nil
+	sw.noopTimer.Stop()
+	sw.longBackChannelTimer.Stop()
+}
+
+func backChannelClose(sw *sessionWrapper) {
+	if sw.bc != nil {
+		debug("wc: %s back channel closed", sw.SID())
+		sw.BackChannelClose()
+		close(sw.bc.done)
+	}
+	sw.bc = nil
+	sw.p = nil
+	sw.backChannelCloseNotifier = nil
+	sw.noopTimer.Stop()
+	sw.longBackChannelTimer.Stop()
+}
+
+func backChannel(sw *sessionWrapper, reqRequest *reqRegister) {
+	debug("wc: %s new back channel", sw.SID())
+	if !maybeACKBackChannel(sw, reqRequest.w, reqRequest.r, false) {
+		close(sw.bc.done)
+		return
+	}
+
+	if sw.bc != nil {
+		sw.BackChannelClose()
+		sm.Error(reqRequest.r, errors.New("Duplicate backchannel."))
+		close(sw.bc.done)
+	}
+	sw.bc = reqRequest
+	sw.p = newPadder(reqRequest.w, reqRequest.r)
+	cn, ok := reqRequest.w.(http.CloseNotifier)
+	if !ok {
+		panic("webserver doesn't support close notification")
+	}
+	sw.backChannelCloseNotifier = cn.CloseNotify()
+	sw.noopTimer.Reset(30 * time.Second)
+	sw.longBackChannelTimer.Reset(4 * 60 * time.Second)
+	sw.BackChannelOpen()
+	if err := flushPending(sw); err != nil {
+		sm.Error(sw.bc.r, err)
+	}
+}
+
+func clientTerminate(sw *sessionWrapper, reqRequest *reqRegister) {
+	debug("wc: %s client terminate session", sw.SID())
+	sid := sw.SID()
+	err := sm.TerminatedSession(sid, ClientTerminateRequest)
+	if err != nil {
+		sm.Error(reqRequest.r, err)
+		http.Error(reqRequest.w, "Unable to terminate",
+			http.StatusInternalServerError)
+		return
+	}
+
+	if sw.bc != nil {
+		sw.BackChannelClose()
+		close(sw.bc.done)
+	}
+
+	mutex.Lock()
+	delete(sessionWrapperMap, sid)
+	mutex.Unlock()
+
+	reqRequest.w.Write([]byte("Terminated"))
 }
 
 func launchSession(sw *sessionWrapper) {
@@ -162,96 +239,21 @@ func sessionWorker(sw *sessionWrapper, activityNotifier chan int) {
 		select {
 		case <-sw.noopTimer.C:
 			noop(sw)
-
 		case <-sw.longBackChannelTimer.C:
-			if sw.bc != nil {
-				debug("wc: %s closing long-lived back channel", sw.SID())
-				sw.p.end()
-				sw.BackChannelClose()
-				close(sw.bc.done)
-			}
-			sw.bc = nil
-			sw.p = nil
-			sw.backChannelCloseNotifier = nil
-			sw.noopTimer.Stop()
-			sw.longBackChannelTimer.Stop()
-
+			longBackChannel(sw)
 		case <-sw.backChannelCloseNotifier:
-			if sw.bc != nil {
-				debug("wc: %s back channel closed", sw.SID())
-				sw.BackChannelClose()
-				close(sw.bc.done)
-			}
-			sw.bc = nil
-			sw.p = nil
-			sw.backChannelCloseNotifier = nil
-			sw.noopTimer.Stop()
-			sw.longBackChannelTimer.Stop()
-
+			backChannelClose(sw)
 		case reqRequest := <-sw.reqNotifier:
 			switch {
 			case reqRequest.r.FormValue("TYPE") == "xmlhttp" ||
 				reqRequest.r.FormValue("TYPE") == "html":
-				debug("wc: %s new back channel", sw.SID())
-				if !maybeACKBackChannel(sw, reqRequest.w, reqRequest.r, false) {
-					close(sw.bc.done)
-					return
-				}
-
-				if sw.bc != nil {
-					sw.BackChannelClose()
-					sm.Error(reqRequest.r, errors.New("Duplicate backchannel."))
-					close(sw.bc.done)
-				}
-				sw.bc = reqRequest
-				sw.p = newPadder(reqRequest.w, reqRequest.r)
-				cn, ok := reqRequest.w.(http.CloseNotifier)
-				if !ok {
-					panic("webserver doesn't support close notification")
-				}
-				sw.backChannelCloseNotifier = cn.CloseNotify()
-				sw.noopTimer.Reset(30 * time.Second)
-				sw.longBackChannelTimer.Reset(4 * 60 * time.Second)
-				sw.BackChannelOpen()
-				if err := flushPending(sw); err != nil {
-					sm.Error(sw.bc.r, err)
-				}
-
+				backChannel(sw, reqRequest)
 			case reqRequest.r.FormValue("TYPE") == "terminate":
-				debug("wc: %s client terminate session", sw.SID())
-				sid := sw.SID()
-				err := sm.TerminatedSession(sid, ClientTerminateRequest)
-				if err != nil {
-					sm.Error(reqRequest.r, err)
-					http.Error(reqRequest.w, "Unable to terminate",
-						http.StatusInternalServerError)
-					return
-				}
-
-				if sw.bc != nil {
-					sw.BackChannelClose()
-					close(sw.bc.done)
-				}
-
-				mutex.Lock()
-				delete(sessionWrapperMap, sid)
-				mutex.Unlock()
-
-				reqRequest.w.Write([]byte("Terminated"))
-				break
-
+				clientTerminate(sw, reqRequest)
 			case reqRequest.r.FormValue("SID") == "":
-				debug("wc: %s forward channel (new session)", sw.SID())
-				newSessionHandler(sw, reqRequest.w, reqRequest.r)
-				reqRequest.done <- struct{}{}
-
+				newSessionHandler(sw, reqRequest)
 			default:
-				debug("wc: %s forward channel", sw.SID())
-				if !maybeACKBackChannel(sw, reqRequest.w, reqRequest.r, true) {
-					return
-				}
-				fcHandler(sw, reqRequest.w, reqRequest.r)
-				reqRequest.done <- struct{}{}
+				fcHandler(sw, reqRequest)
 			}
 
 		case sa := <-sw.Notifier():
