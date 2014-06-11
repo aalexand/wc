@@ -13,13 +13,15 @@ import (
 )
 
 func noop(sw *sessionWrapper) {
-	if sw.bc == nil || sw.bc.r.FormValue("CI") == "1" {
+	if sw.bc == nil {
 		debug("wc: %s noop skipped", sw.SID())
 		return
 	}
 
 	// if a non-buffered, active backchannel w/o pending data add noop
 	debug("wc: %s noop", sw.SID())
+	sw.noopTimer.Reset(30 * time.Second)
+
 	if err := sw.BackChannelAdd([]byte("[\"noop\"]")); err != nil {
 		sm.Error(sw.bc.r, err)
 		return
@@ -49,7 +51,23 @@ func flushPending(sw *sessionWrapper) error {
 			msg.Body)
 	}
 	sw.si.BackChannelAID = msgs[len(msgs)-1].ID
-	return sw.p.chunkMessages(msgs)
+	err = sw.p.chunkMessages(msgs)
+	if err != nil {
+		return err
+	}
+	if sw.bc.r.FormValue("CI") == "1" {
+		debug("wc: %s closing buffered-proxy back channel to deliver messages",
+			sw.SID())
+		sw.p.end()
+		sw.BackChannelClose()
+		close(sw.bc.done)
+		sw.bc = nil
+		sw.p = nil
+		sw.backChannelCloseNotifier = nil
+		sw.noopTimer.Stop()
+		sw.longBackChannelTimer.Stop()
+	}
+	return nil
 }
 
 func launchSession(sw *sessionWrapper) {
@@ -142,7 +160,6 @@ func sessionWorker(sw *sessionWrapper, activityNotifier chan int) {
 		select {
 		case <-sw.noopTimer.C:
 			noop(sw)
-			sw.noopTimer.Reset(30 * time.Second)
 
 		case <-sw.longBackChannelTimer.C:
 			if sw.bc != nil {
