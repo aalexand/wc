@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"unicode/utf16"
 	"unicode/utf8"
 )
 
@@ -157,8 +158,16 @@ func (p *padder) writeInternal(b string) error {
 			return err
 		}
 	case length:
-		utf8Length := utf8.RuneCountInString(b)
-		if _, err := fmt.Fprintf(p.w, "%d\n%s", utf8Length, b); err != nil {
+		runeCount := utf8.RuneCountInString(b)
+		jsLength := runeCount
+		for _, r := range []rune(b) {
+			// double count code points represented as surrogate pairs in JS
+			// http://mathiasbynens.be/notes/javascript-encoding
+			if r1, r2 := utf16.EncodeRune(r); r1 != '\uFFFD' && r2 != '\uFFFD' {
+				jsLength++
+			}
+		}
+		if _, err := fmt.Fprintf(p.w, "%d\n%s", jsLength, b); err != nil {
 			return err
 		}
 	default:

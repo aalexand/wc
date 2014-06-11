@@ -45,6 +45,12 @@ const (
 <script>try{parent.d()}catch(e){}</script>
 0
 `
+
+	goldNonBMPJSLength = `27
+20
+[[0,["𐀀one𐀀two"]]]
+0
+`
 )
 
 type mockResponse struct {
@@ -156,5 +162,19 @@ func TestMessagesIE(t *testing.T) {
 	p.end()
 	if !bytes.Equal(w.Raw(), []byte(goldMessagesIE)) {
 		t.Errorf("Found %s, want %s", w.Raw(), goldMessagesIE)
+	}
+}
+
+func TestNonBMPJSLength(t *testing.T) {
+	r := newMockRequest("GET", "/channel?TYPE=xmlhttp")
+	w := newMockResponse()
+	p := newPadder(w, r)
+	msgs := []*Message{
+		&Message{0, []byte(jsonArray([]interface{}{"𐀀one𐀀two"}))},
+	}
+	p.chunkMessages(msgs)
+	p.end()
+	if !bytes.Equal(w.Raw(), []byte(goldNonBMPJSLength)) {
+		t.Errorf("Found %s, want %s", w.Raw(), goldNonBMPJSLength)
 	}
 }
