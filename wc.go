@@ -125,7 +125,13 @@ type Session interface {
 // SessionInfo tracks the state related to which messages have been processed
 // on the forward and backward channels.
 type SessionInfo struct {
-	BackChannelAID, ForwardChannelAID int
+	// BackChannelAID should be set to the lowest ID in the back channel message
+	// queue when computing the return value for LookupSession().
+	BackChannelAID int
+
+	// ForwardChannelAID should be set to the largest previously received forward
+	// channel ID when computing the return value for LookupSession().
+	ForwardChannelAID int
 }
 
 // DefaultSession provides a partial implementation of the Session interface.
