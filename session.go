@@ -56,6 +56,8 @@ func flushPending(sw *sessionWrapper) error {
 		return err
 	}
 	if sw.bc.r.FormValue("CI") == "1" {
+		// TODO(hochhaus): Do not write messages in chunked mode when the back
+		// channel is a buffered proxy. Just reply to the entire request at once.
 		debug("wc: %s closing buffered-proxy back channel to deliver messages",
 			sw.SID())
 		sw.p.end()
