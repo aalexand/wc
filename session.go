@@ -12,39 +12,43 @@ import (
 	"time"
 )
 
-func noop(sw *sessionWrapper, bc *reqRegister, p *padder) {
-	if bc == nil || bc.r.FormValue("CI") != "1" {
-		return
-	}
-	if sw.si.BackChannelBytes > 0 {
+func noop(sw *sessionWrapper) {
+	if sw.bc == nil || sw.bc.r.FormValue("CI") == "1" {
+		debug("wc: %s noop skipped", sw.SID())
 		return
 	}
 
 	// if a non-buffered, active backchannel w/o pending data add noop
 	debug("wc: %s noop", sw.SID())
 	if err := sw.BackChannelAdd([]byte("[\"noop\"]")); err != nil {
-		sm.Error(bc.r, err)
+		sm.Error(sw.bc.r, err)
 		return
 	}
-	sw.si.BackChannelBytes += 8
-	if err := flushPending(sw, p); err != nil {
-		sm.Error(bc.r, err)
+	sw.backChannelBytes += 8
+	if err := flushPending(sw); err != nil {
+		sm.Error(sw.bc.r, err)
 	}
 }
 
-func flushPending(sw *sessionWrapper, p *padder) error {
-	if sw.si.BackChannelBytes <= 0 {
-		return nil
-	}
+func flushPending(sw *sessionWrapper) error {
 	msgs, err := sw.BackChannelPeek()
 	if err != nil {
 		return err
+	}
+	for len(msgs) > 0 {
+		if msgs[0].ID > sw.si.BackChannelAID {
+			break
+		}
+		msgs = msgs[1:]
+	}
+	if len(msgs) == 0 {
+		return nil
 	}
 	for _, msg := range msgs {
 		debug("wc: %s writing back channel message %d %s", sw.SID(), msg.ID,
 			msg.Body)
 	}
-	return p.chunkMessages(msgs)
+	return sw.p.chunkMessages(msgs)
 }
 
 func launchSession(sw *sessionWrapper) {
@@ -57,6 +61,7 @@ func maybeACKBackChannel(
 	sw *sessionWrapper,
 	w http.ResponseWriter,
 	r *http.Request,
+	forwardChannel bool,
 ) bool {
 	aid, err := strconv.Atoi(r.FormValue("AID"))
 	if err != nil || aid < 0 {
@@ -70,16 +75,23 @@ func maybeACKBackChannel(
 		http.Error(w, "Unable to get messages", http.StatusInternalServerError)
 		return false
 	}
+	remainingBytes := 0
 	ackedBytes := 0
-	ackedMessages := false
+	messagesToACK := false
 	for _, bcMsg := range bcMsgs {
 		if bcMsg.ID > aid {
-			break
+			remainingBytes += len(bcMsg.Body)
+		} else {
+			messagesToACK = true
+			ackedBytes += len(bcMsg.Body)
 		}
-		ackedBytes += len(bcMsg.Body)
-		ackedMessages = true
 	}
-	if !ackedMessages {
+	if !messagesToACK {
+		if !forwardChannel {
+			// Retransmit any un-ACKed messages on the new back channel.
+			sw.si.BackChannelAID = aid
+			sw.backChannelBytes = remainingBytes
+		}
 		return true
 	}
 
@@ -89,9 +101,14 @@ func maybeACKBackChannel(
 		http.Error(w, "Unable to ACK back channel up to AID", 400)
 		return false
 	}
-
-	sw.si.BackChannelAID = aid
-	sw.si.BackChannelBytes -= ackedBytes
+	if forwardChannel {
+		// Do not trigger retransmit on the current back channel
+		sw.backChannelBytes -= ackedBytes
+	} else {
+		// Retransmit any un-ACKed messages on the new back channel.
+		sw.si.BackChannelAID = aid
+		sw.backChannelBytes = remainingBytes
+	}
 	debug("wc: %s ACKed back channel %d bytes up to AID %d", sw.SID(),
 		ackedBytes, aid)
 	return true
@@ -120,72 +137,64 @@ func activityProxyWorker(sw *sessionWrapper, activityNotifier chan int) {
 }
 
 func sessionWorker(sw *sessionWrapper, activityNotifier chan int) {
-	noopTimer := time.NewTimer(30 * time.Second)
-	noopTimer.Stop()
-	longBackChannelTimer := time.NewTimer(4 * 60 * time.Second)
-	longBackChannelTimer.Stop()
-	var bc *reqRegister
-	var backChannelCloseNotifier <-chan bool
-	var p *padder
-
 	for {
 		select {
-		case <-noopTimer.C:
-			noop(sw, bc, p)
-			noopTimer.Reset(30 * time.Second)
+		case <-sw.noopTimer.C:
+			noop(sw)
+			sw.noopTimer.Reset(30 * time.Second)
 
-		case <-longBackChannelTimer.C:
-			if bc != nil {
+		case <-sw.longBackChannelTimer.C:
+			if sw.bc != nil {
 				debug("wc: %s closing long-lived back channel", sw.SID())
-				p.end()
+				sw.p.end()
 				sw.BackChannelClose()
-				close(bc.done)
+				close(sw.bc.done)
 			}
-			bc = nil
-			p = nil
-			backChannelCloseNotifier = nil
-			noopTimer.Stop()
-			longBackChannelTimer.Stop()
+			sw.bc = nil
+			sw.p = nil
+			sw.backChannelCloseNotifier = nil
+			sw.noopTimer.Stop()
+			sw.longBackChannelTimer.Stop()
 
-		case <-backChannelCloseNotifier:
-			if bc != nil {
+		case <-sw.backChannelCloseNotifier:
+			if sw.bc != nil {
 				debug("wc: %s back channel closed", sw.SID())
 				sw.BackChannelClose()
-				close(bc.done)
+				close(sw.bc.done)
 			}
-			bc = nil
-			p = nil
-			backChannelCloseNotifier = nil
-			noopTimer.Stop()
-			longBackChannelTimer.Stop()
+			sw.bc = nil
+			sw.p = nil
+			sw.backChannelCloseNotifier = nil
+			sw.noopTimer.Stop()
+			sw.longBackChannelTimer.Stop()
 
 		case reqRequest := <-sw.reqNotifier:
 			switch {
 			case reqRequest.r.FormValue("TYPE") == "xmlhttp" ||
 				reqRequest.r.FormValue("TYPE") == "html":
 				debug("wc: %s new back channel", sw.SID())
-				if !maybeACKBackChannel(sw, reqRequest.w, reqRequest.r) {
-					close(bc.done)
+				if !maybeACKBackChannel(sw, reqRequest.w, reqRequest.r, false) {
+					close(sw.bc.done)
 					return
 				}
 
-				if bc != nil {
+				if sw.bc != nil {
 					sw.BackChannelClose()
 					sm.Error(reqRequest.r, errors.New("Duplicate backchannel."))
-					close(bc.done)
+					close(sw.bc.done)
 				}
-				bc = reqRequest
-				p = newPadder(reqRequest.w, reqRequest.r)
-				cn, ok := bc.w.(http.CloseNotifier)
+				sw.bc = reqRequest
+				sw.p = newPadder(reqRequest.w, reqRequest.r)
+				cn, ok := reqRequest.w.(http.CloseNotifier)
 				if !ok {
 					panic("webserver doesn't support close notification")
 				}
-				backChannelCloseNotifier = cn.CloseNotify()
-				noopTimer.Reset(30 * time.Second)
-				longBackChannelTimer.Reset(4 * 60 * time.Second)
+				sw.backChannelCloseNotifier = cn.CloseNotify()
+				sw.noopTimer.Reset(30 * time.Second)
+				sw.longBackChannelTimer.Reset(4 * 60 * time.Second)
 				sw.BackChannelOpen()
-				if err := flushPending(sw, p); err != nil {
-					sm.Error(bc.r, err)
+				if err := flushPending(sw); err != nil {
+					sm.Error(sw.bc.r, err)
 				}
 
 			case reqRequest.r.FormValue("TYPE") == "terminate":
@@ -199,9 +208,9 @@ func sessionWorker(sw *sessionWrapper, activityNotifier chan int) {
 					return
 				}
 
-				if bc != nil {
+				if sw.bc != nil {
 					sw.BackChannelClose()
-					close(bc.done)
+					close(sw.bc.done)
 				}
 
 				mutex.Lock()
@@ -218,10 +227,10 @@ func sessionWorker(sw *sessionWrapper, activityNotifier chan int) {
 
 			default:
 				debug("wc: %s forward channel", sw.SID())
-				if !maybeACKBackChannel(sw, reqRequest.w, reqRequest.r) {
+				if !maybeACKBackChannel(sw, reqRequest.w, reqRequest.r, true) {
 					return
 				}
-				fcHandler(sw, bc != nil, reqRequest.w, reqRequest.r)
+				fcHandler(sw, reqRequest.w, reqRequest.r)
 				reqRequest.done <- struct{}{}
 			}
 
@@ -229,21 +238,21 @@ func sessionWorker(sw *sessionWrapper, activityNotifier chan int) {
 			switch {
 			case sa == ServerTerminate:
 				debug("wc: %s server terminate session", sw.SID(), sa)
-				if bc != nil {
+				if sw.bc != nil {
 					// TODO(hochhaus): persist the session termination until the client
 					// ACKs it?
 					msgs := []*Message{
 						&Message{0, []byte(jsonArray([]interface{}{"stop"}))},
 					}
-					p.chunkMessages(msgs)
-					p.end()
+					sw.p.chunkMessages(msgs)
+					sw.p.end()
 					sw.BackChannelClose()
-					close(bc.done)
-					bc = nil
-					p = nil
-					backChannelCloseNotifier = nil
-					noopTimer.Stop()
-					longBackChannelTimer.Stop()
+					close(sw.bc.done)
+					sw.bc = nil
+					sw.p = nil
+					sw.backChannelCloseNotifier = nil
+					sw.noopTimer.Stop()
+					sw.longBackChannelTimer.Stop()
 				}
 				break
 			default:
@@ -253,10 +262,10 @@ func sessionWorker(sw *sessionWrapper, activityNotifier chan int) {
 		case sa := <-activityNotifier:
 			debug("wc: %s new back channel data %d bytes", sw.SID(), sa)
 			// BackChannelActivity
-			sw.si.BackChannelBytes += sa
-			if bc != nil {
-				if err := flushPending(sw, p); err != nil {
-					sm.Error(bc.r, err)
+			sw.backChannelBytes += sa
+			if sw.bc != nil {
+				if err := flushPending(sw); err != nil {
+					sm.Error(sw.bc.r, err)
 				}
 			}
 		}

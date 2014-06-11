@@ -125,7 +125,7 @@ type Session interface {
 // SessionInfo tracks the state related to which messages have been processed
 // on the forward and backward channels.
 type SessionInfo struct {
-	BackChannelAID, BackChannelBytes, ForwardChannelAID int
+	BackChannelAID, ForwardChannelAID int
 }
 
 // DefaultSession provides a partial implementation of the Session interface.

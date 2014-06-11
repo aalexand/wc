@@ -7,7 +7,6 @@ package wc
 import (
 	"fmt"
 	"net/http"
-	"sync"
 )
 
 // Special cases to think about:
@@ -26,17 +25,6 @@ import (
 // * sharding comet server? (moving sessions across servers?)
 // * restart server without dropping back channels
 // * expvar stats: # sessions, # backchannels, # pending messages, etc
-
-var (
-	mutex             sync.Mutex
-	sessionWrapperMap map[string]*sessionWrapper
-)
-
-type sessionWrapper struct {
-	Session
-	si          *SessionInfo
-	reqNotifier chan *reqRegister
-}
 
 type reqRegister struct {
 	w    http.ResponseWriter
@@ -64,11 +52,7 @@ func newSession(r *http.Request) (*sessionWrapper, error) {
 		return nil, err
 	}
 
-	sw := &sessionWrapper{
-		session,
-		&SessionInfo{-1, 0, -1},
-		make(chan *reqRegister),
-	}
+	sw := newSessionWrapper(session)
 	launchSession(sw)
 
 	sessionWrapperMap[session.SID()] = sw
@@ -87,7 +71,8 @@ func getSession(r *http.Request) (*sessionWrapper, error) {
 		return nil, err
 	}
 
-	sw := &sessionWrapper{session, si, make(chan *reqRegister)}
+	sw := newSessionWrapper(session)
+	sw.si = si
 	launchSession(sw)
 
 	sessionWrapperMap[sid] = sw

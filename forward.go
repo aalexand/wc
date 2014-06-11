@@ -20,7 +20,16 @@ func newSessionHandler(
 		[]interface{}{"c", sw.SID(), sm.HostPrefix(), 8},
 	))
 	err := sw.BackChannelAdd(createMsg)
-	sw.si.BackChannelBytes += len(createMsg)
+	if err != nil {
+		sm.Error(r, err)
+		http.Error(w, "Unable to add create message to back channel",
+			http.StatusInternalServerError)
+		return
+	}
+	sw.backChannelBytes += len(createMsg)
+
+	// TODO(hochhaus): how to let user code add other messages to the back
+	// channel queue prior flushing down the forward channel?
 
 	msgs, err := sw.BackChannelPeek()
 	if err != nil {
@@ -35,7 +44,6 @@ func newSessionHandler(
 
 func fcHandler(
 	sw *sessionWrapper,
-	hasBackChannel bool,
 	w http.ResponseWriter,
 	r *http.Request,
 ) {
@@ -72,8 +80,8 @@ func fcHandler(
 			}
 			msg := &Message{ID: offset + i, Body: []byte(jsonObject(jsonMap))}
 			msgs = append(msgs, msg)
-			debug("wc: %s new forward channel message %d %s", sw.SID(), msg.ID,
-				msg.Body)
+			debug("wc: %s new forward channel message %d %s", sw.Session.SID(),
+				msg.ID, msg.Body)
 		}
 	}
 
@@ -87,9 +95,9 @@ func fcHandler(
 	}
 
 	reply := []interface{}{
-		hasBackChannel,
+		sw.bc != nil,
 		sw.si.BackChannelAID,
-		sw.si.BackChannelBytes,
+		sw.backChannelBytes,
 	}
 	p := newPadder(w, r)
 	p.write(jsonArray(reply))
