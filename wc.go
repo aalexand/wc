@@ -88,6 +88,10 @@ type Session interface {
 	// session's go routine (for example from the ForwardChannel() callback).
 	DataNotifier() chan int
 
+	// BackChannelNewSessionMessages allows insertion of messages into the back
+	// channel queue of a new session. Do not add messages from NewSession().
+	BackChannelNewSessionMessages() error
+
 	// BackChannelPeek returns a slice of all pending backchannel Messages.
 	BackChannelPeek() ([]*Message, error)
 
@@ -163,6 +167,11 @@ func (s *DefaultSession) DataNotifier() chan int {
 	return s.dataNotifier
 }
 
+// BackChannelNewSessionMessages provides a noop implementation.
+func (s *DefaultSession) BackChannelNewSessionMessages() error {
+	return nil
+}
+
 // BackChannelClose provides a noop implementation.
 func (s *DefaultSession) BackChannelClose() {
 }
@@ -198,7 +207,8 @@ type SessionManager interface {
 
 	// NewSession creates a new WebChannel session. The returned Session object
 	// must have SID() populated. Additionally, session persistent state should
-	// be created as necessary.
+	// be created as necessary. Do not add messages to the back channel from
+	// this function, instead see BackChannelNewSessionMessages().
 	NewSession(r *http.Request) (Session, error)
 
 	// TerminatedSession notifies that the Session has been terminated (either

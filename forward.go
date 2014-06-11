@@ -20,8 +20,7 @@ func newSessionHandler(sw *sessionWrapper, reqRequest *reqRegister) {
 	createMsg := []byte(jsonArray(
 		[]interface{}{"c", sw.SID(), sm.HostPrefix(), 8},
 	))
-	err := sw.BackChannelAdd(createMsg)
-	if err != nil {
+	if err := sw.BackChannelAdd(createMsg); err != nil {
 		sm.Error(reqRequest.r, err)
 		http.Error(reqRequest.w, "Unable to add create message to back channel",
 			http.StatusInternalServerError)
@@ -29,8 +28,12 @@ func newSessionHandler(sw *sessionWrapper, reqRequest *reqRegister) {
 	}
 	sw.backChannelBytes += len(createMsg)
 
-	// TODO(hochhaus): how to let user code add other messages to the back
-	// channel queue prior flushing down the forward channel?
+	if err := sw.BackChannelNewSessionMessages(); err != nil {
+		sm.Error(reqRequest.r, err)
+		http.Error(reqRequest.w, "Unable to add messages for new session",
+			http.StatusInternalServerError)
+		return
+	}
 
 	msgs, err := sw.BackChannelPeek()
 	if err != nil {

@@ -64,7 +64,3 @@ func newSessionWrapper(session Session) *sessionWrapper {
 	sw.longBackChannelTimer.Stop()
 	return sw
 }
-
-func (sw *sessionWrapper) updateBackChannelBytes() {
-
-}
