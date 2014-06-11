@@ -48,6 +48,7 @@ func flushPending(sw *sessionWrapper) error {
 		debug("wc: %s writing back channel message %d %s", sw.SID(), msg.ID,
 			msg.Body)
 	}
+	sw.si.BackChannelAID = msgs[len(msgs)-1].ID
 	return sw.p.chunkMessages(msgs)
 }
 
