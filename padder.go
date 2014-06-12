@@ -161,7 +161,10 @@ func (p *padder) writeInternal(b string) error {
 		runeCount := utf8.RuneCountInString(b)
 		jsLength := runeCount
 		for _, r := range []rune(b) {
-			// double count code points represented as surrogate pairs in JS
+			// Internally js uses utf-16 for strings (after parsing them out of a
+			// utf-8 context). In utf-16, non-bmp characters (code points >= U+10000)
+			// are represented as surrogate pairs (length 2, not 1). Double count
+			// code points represented as surrogate pairs in JS
 			// http://mathiasbynens.be/notes/javascript-encoding
 			if r1, r2 := utf16.EncodeRune(r); r1 != '\uFFFD' && r2 != '\uFFFD' {
 				jsLength++
