@@ -85,7 +85,7 @@ type Session interface {
 	// This check only determines if the given HTTP request should be able to
 	// send and receive messages for the specified sid. Additional application
 	// level security is required for almost all applications.
-	Authenticated(sid string, r *http.Request) bool
+	Authenticated(r *http.Request) bool
 
 	// Notifier provides the channel for application code to pass SessionActivity
 	// events for processing by WebChannel.
