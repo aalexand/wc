@@ -78,6 +78,15 @@ func NewMessage(ID int, Body []byte) *Message {
 type Session interface {
 	SID() string
 
+	// Authenticated verifies that the sid and request pair are correctly
+	// associated and have access to the user application. If Authenticated()
+	// returns true back/forward channel messages will be sent/received.
+	//
+	// This check only determines if the given HTTP request should be able to
+	// send and receive messages for the specified sid. Additional application
+	// level security is required for almost all applications.
+	Authenticated(sid string, r *http.Request) bool
+
 	// Notifier provides the channel for application code to pass SessionActivity
 	// events for processing by WebChannel.
 	Notifier() chan SessionActivity
@@ -139,8 +148,8 @@ type SessionInfo struct {
 }
 
 // DefaultSession provides a partial implementation of the Session interface.
-// Callers must implement at least BackChannel(), AckBackChannelThrough(),
-// BackChannelAdd() and ForwardChannel().
+// Callers must implement at least Authenticated(), BackChannel(),
+// AckBackChannelThrough(), BackChannelAdd() and ForwardChannel().
 type DefaultSession struct {
 	SessionID    string
 	notifier     chan SessionActivity
@@ -190,15 +199,6 @@ func (s *DefaultSession) BackChannelOpen() {
 // Session{,Manager} interfaces. For an example of doing so, see the wcchat
 // demo application.
 type SessionManager interface {
-	// Authenticated verifies that the sid and request pair are correctly
-	// associated and have access to the user application. If Authenticated()
-	// returns true back/forward channel messages will be sent/received.
-	//
-	// This check only determines if the given HTTP request should be able to
-	// send and receive messages for the specified sid. Additional application
-	// level security is required for almost all applications.
-	Authenticated(sid string, r *http.Request) bool
-
 	// Lookup a previous session which is unknown to the server at this time.
 	// This is useful to clients which store persistent session information
 	// which survives across server restarts. When a requested SID cannot be
@@ -236,8 +236,8 @@ type SessionManager interface {
 }
 
 // DefaultSessionManager provides a partial implementation of the
-// SessionManager interface. Callers must implement at least Authenticated(),
-// NewSession() and TerminatedSession().
+// SessionManager interface. Callers must implement at least NewSession() and
+// TerminatedSession().
 type DefaultSessionManager struct {
 }
 
