@@ -26,7 +26,6 @@ func newSessionHandler(sw *sessionWrapper, reqRequest *reqRegister) {
 			http.StatusInternalServerError)
 		return
 	}
-	sw.backChannelBytes += len(createMsg)
 
 	if err := sw.BackChannelNewSessionMessages(); err != nil {
 		sm.Error(reqRequest.r, err)
