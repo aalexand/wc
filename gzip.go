@@ -18,7 +18,8 @@ const (
 
 // GZIPResponseWriter wraps a http.ResponseWriter and provides optional
 // gzip compression. Streaming HTTP chunks is supported using the
-// http.Flusher interface.
+// http.Flusher interface. Close notification is supported via the
+// http.CloseNotifier interface.
 type GZIPResponseWriter struct {
 	*gzip.Writer
 	http.ResponseWriter
@@ -26,7 +27,7 @@ type GZIPResponseWriter struct {
 	buf                     bytes.Buffer
 }
 
-func (w GZIPResponseWriter) detectAndWriteBuffer() {
+func (w *GZIPResponseWriter) detectAndWriteBuffer(isFlush bool) {
 	if w.detectDone {
 		return
 	}
@@ -38,8 +39,8 @@ func (w GZIPResponseWriter) detectAndWriteBuffer() {
 	}
 
 	// Check for uncompressed content. Only uncompressed output should be gzipped
-	uncompressedType := strings.HasPrefix(header.Get("Content-Type"), "text/")
-	compressCandidate := uncompressedType && w.buf.Len() >= minGZIPSize
+	uncompType := strings.HasPrefix(header.Get("Content-Type"), "text/")
+	compressCandidate := uncompType && (isFlush || w.buf.Len() >= minGZIPSize)
 	if compressCandidate {
 		header.Set("Vary", "accept-encoding")
 	}
@@ -56,11 +57,13 @@ func (w GZIPResponseWriter) detectAndWriteBuffer() {
 }
 
 // Header return the http.Header from the underlying http.ResponseWriter.
-func (w GZIPResponseWriter) Header() http.Header {
+func (w *GZIPResponseWriter) Header() http.Header {
 	return w.ResponseWriter.Header()
 }
 
-func (w GZIPResponseWriter) Write(b []byte) (int, error) {
+// Writes the response to the underlying http.ResponseWriter while
+// transparently supporting compression for uncompressed data.
+func (w *GZIPResponseWriter) Write(b []byte) (int, error) {
 	if !w.detectDone {
 		// write to buffer
 		l, err := w.buf.Write(b)
@@ -70,7 +73,7 @@ func (w GZIPResponseWriter) Write(b []byte) (int, error) {
 		if w.buf.Len() < sniffLen {
 			return l, nil
 		}
-		w.detectAndWriteBuffer()
+		w.detectAndWriteBuffer(false)
 		return l, nil
 	}
 
@@ -81,22 +84,25 @@ func (w GZIPResponseWriter) Write(b []byte) (int, error) {
 }
 
 // Flush writes any buffered data to the underlying ResponseWriter.
-func (w GZIPResponseWriter) Flush() {
-	w.detectAndWriteBuffer()
+func (w *GZIPResponseWriter) Flush() {
+	w.detectAndWriteBuffer(true)
 	if w.Writer != nil {
 		w.Writer.Flush()
-		// TODO(ahochhaus): is w.ResponseWriter.(http.Flusher).Flush() necessary?
-	} else {
-		w.ResponseWriter.(http.Flusher).Flush()
 	}
+	w.ResponseWriter.(http.Flusher).Flush()
 }
 
 // Close cleans up the underlying gzip.Writer (if necessary).
-func (w GZIPResponseWriter) Close() {
-	w.detectAndWriteBuffer()
+func (w *GZIPResponseWriter) Close() {
+	w.detectAndWriteBuffer(false)
 	if w.Writer != nil {
 		w.Writer.Close()
 	}
+}
+
+// CloseNotify return the underlying CloseNotify() channel.
+func (w *GZIPResponseWriter) CloseNotify() <-chan bool {
+	return w.ResponseWriter.(http.CloseNotifier).CloseNotify()
 }
 
 // NewGZIPResponseWriter creates a new GZIPResponseWriter. The http.Request is
