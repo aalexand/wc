@@ -55,6 +55,11 @@ func (w GZIPResponseWriter) detectAndWriteBuffer() {
 	w.detectDone = true
 }
 
+// Header return the http.Header from the underlying http.ResponseWriter.
+func (w GZIPResponseWriter) Header() http.Header {
+	return w.ResponseWriter.Header()
+}
+
 func (w GZIPResponseWriter) Write(b []byte) (int, error) {
 	if !w.detectDone {
 		// write to buffer
