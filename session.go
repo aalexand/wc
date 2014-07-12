@@ -129,8 +129,8 @@ func backChannel(sw *sessionWrapper, reqRequest *reqRegister) {
 func clientTerminate(sw *sessionWrapper, reqRequest *reqRegister) {
 	debug("wc: %s client terminate session", sw.SID())
 	defer func() {
-    reqRequest.done <- struct{}{}
-  }()
+		reqRequest.done <- struct{}{}
+	}()
 
 	sid := sw.SID()
 	err := sm.TerminatedSession(sid, ClientTerminateRequest)
