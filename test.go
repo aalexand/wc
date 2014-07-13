@@ -28,12 +28,12 @@ func testPhase2(p *padder) {
 	if err != nil {
 		return
 	}
-	cn, ok := p.w.(http.CloseNotifier)
-	if !ok {
-		panic("webserver doesn't support close notification")
+	var closeNotify <-chan bool
+	if cn, ok := p.w.(http.CloseNotifier); ok {
+		closeNotify = cn.CloseNotify()
 	}
 	select {
-	case <-cn.CloseNotify():
+	case <-closeNotify:
 		// shortcut the second test chunk
 	case <-time.After(testDelay * time.Second):
 		p.chunk(testSecondChunk)
