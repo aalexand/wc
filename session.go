@@ -263,6 +263,10 @@ func sessionWorker(sw *sessionWrapper, activityNotifier chan int) {
 			switch {
 			case sa == ServerTerminate:
 				debug("wc: %s server terminate session", sw.SID(), sa)
+				err := sm.TerminatedSession(sw.Session, ServerTerminateRequest)
+				if err != nil {
+					sm.Error(sw.bc.r, err)
+				}
 				if sw.bc != nil {
 					// TODO(hochhaus): persist the session termination until the client
 					// ACKs it?
