@@ -132,8 +132,7 @@ func clientTerminate(sw *sessionWrapper, reqRequest *reqRegister) {
 		reqRequest.done <- struct{}{}
 	}()
 
-	sid := sw.SID()
-	err := sm.TerminatedSession(sid, ClientTerminateRequest)
+	err := sm.TerminatedSession(sw.Session, ClientTerminateRequest)
 	if err != nil {
 		sm.Error(reqRequest.r, err)
 		http.Error(reqRequest.w, "Unable to terminate",
@@ -147,7 +146,7 @@ func clientTerminate(sw *sessionWrapper, reqRequest *reqRegister) {
 	}
 
 	mutex.Lock()
-	delete(sessionWrapperMap, sid)
+	delete(sessionWrapperMap, sw.SID())
 	mutex.Unlock()
 
 	reqRequest.w.Write([]byte("Terminated"))

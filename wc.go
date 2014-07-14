@@ -213,7 +213,7 @@ type SessionManager interface {
 
 	// TerminatedSession notifies that the Session has been terminated (either
 	// by the client or server).
-	TerminatedSession(sid string, reason TerminationReason) error
+	TerminatedSession(s Session, reason TerminationReason) error
 
 	// Error logs internal failure conditions to application level code.
 	Error(r *http.Request, err error)
@@ -222,7 +222,7 @@ type SessionManager interface {
 	// developers of wc.
 	Debug(string)
 
-	// HostPrefix is used on IE < 10 to circumvent same host connection limits.
+	// HostPrefix is used to circumvent same host connection limits.
 	//
 	// On the client, hostPrefix_ values will be passed to correctHostPrefix()
 	// prior to use.
