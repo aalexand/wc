@@ -66,7 +66,7 @@ func getSession(r *http.Request) (*sessionWrapper, error) {
 	if sw, hasSession := sessionWrapperMap[sid]; hasSession {
 		return sw, nil
 	}
-	session, si, err := sm.LookupSession(sid)
+	session, si, err := sm.LookupSession(r, sid)
 	if err != nil {
 		return nil, err
 	}

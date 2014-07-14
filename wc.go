@@ -203,7 +203,7 @@ type SessionManager interface {
 	// This is useful to clients which store persistent session information
 	// which survives across server restarts. When a requested SID cannot be
 	// found, return ErrUnknownSID.
-	LookupSession(sid string) (Session, *SessionInfo, error)
+	LookupSession(r *http.Request, sid string) (Session, *SessionInfo, error)
 
 	// NewSession creates a new WebChannel session. The returned Session object
 	// must have SID() populated. Additionally, session persistent state should
@@ -244,7 +244,7 @@ type DefaultSessionManager struct {
 // LookupSession provides a noop implementation. All sessions requested are
 // returned as ErrUnknownSID which is suitable for applications which do not
 // persist session information across server server restarts.
-func (sm *DefaultSessionManager) LookupSession(sid string) (
+func (sm *DefaultSessionManager) LookupSession(r *http.Request, sid string) (
 	Session,
 	*SessionInfo,
 	error,
