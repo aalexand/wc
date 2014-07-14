@@ -143,6 +143,11 @@ func clientTerminate(sw *sessionWrapper, reqRequest *reqRegister) {
 	if sw.bc != nil {
 		sw.BackChannelClose()
 		close(sw.bc.done)
+		sw.bc = nil
+		sw.p = nil
+		sw.backChannelCloseNotifier = nil
+		sw.noopTimer.Stop()
+		sw.longBackChannelTimer.Stop()
 	}
 
 	mutex.Lock()
