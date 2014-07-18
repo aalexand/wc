@@ -27,7 +27,7 @@ type GZIPResponseWriter struct {
 	buf                     bytes.Buffer
 }
 
-func (w *GZIPResponseWriter) detectAndWriteBuffer(isFlush bool) {
+func (w *GZIPResponseWriter) detect(isFlush bool) {
 	if w.detectDone {
 		return
 	}
@@ -45,15 +45,26 @@ func (w *GZIPResponseWriter) detectAndWriteBuffer(isFlush bool) {
 		header.Set("Vary", "accept-encoding")
 	}
 
-	// Write buffer
+	// Setup gzip Writer
 	if w.browserGZIP && compressCandidate {
 		header.Set("Content-Encoding", "gzip")
 		w.Writer = gzip.NewWriter(w.ResponseWriter)
+	}
+	w.detectDone = true
+}
+
+func (w *GZIPResponseWriter) writeBuffer() {
+	if w.buf.Len() == 0 {
+		return
+	}
+
+	// Write buffer
+	if w.Writer != nil {
 		w.Writer.Write(w.buf.Bytes())
 	} else {
 		w.ResponseWriter.Write(w.buf.Bytes())
 	}
-	w.detectDone = true
+	w.buf.Truncate(0)
 }
 
 // Header return the http.Header from the underlying http.ResponseWriter.
@@ -73,19 +84,31 @@ func (w *GZIPResponseWriter) Write(b []byte) (int, error) {
 		if w.buf.Len() < sniffLen {
 			return l, nil
 		}
-		w.detectAndWriteBuffer(false)
+		w.detect(false)
+		w.writeBuffer()
 		return l, nil
 	}
 
+	w.writeBuffer()
 	if w.Writer != nil {
 		return w.Writer.Write(b)
 	}
 	return w.ResponseWriter.Write(b)
 }
 
+// WriteHeader detects gzip compession and then proxies the supplied status
+// code to the underlying http.ResponseWriter.
+func (w *GZIPResponseWriter) WriteHeader(code int) {
+	// Note, w.buf will be empty when WriteHeader is called explicitly by the
+	// application. Do not forceCompress as most non-200 responses are small.
+	w.detect(false)
+	w.ResponseWriter.WriteHeader(code)
+}
+
 // Flush writes any buffered data to the underlying ResponseWriter.
 func (w *GZIPResponseWriter) Flush() {
-	w.detectAndWriteBuffer(true)
+	w.detect(true)
+	w.writeBuffer()
 	if w.Writer != nil {
 		w.Writer.Flush()
 	}
@@ -94,7 +117,8 @@ func (w *GZIPResponseWriter) Flush() {
 
 // Close cleans up the underlying gzip.Writer (if necessary).
 func (w *GZIPResponseWriter) Close() {
-	w.detectAndWriteBuffer(false)
+	w.detect(false)
+	w.writeBuffer()
 	if w.Writer != nil {
 		w.Writer.Close()
 	}
