@@ -39,7 +39,8 @@ func (w *GZIPResponseWriter) detect(isFlush bool) {
 	}
 
 	// Check for uncompressed content. Only uncompressed output should be gzipped
-	uncompType := strings.HasPrefix(header.Get("Content-Type"), "text/")
+	uncompType := strings.HasPrefix(header.Get("Content-Type"), "text/") ||
+		header.Get("Content-Type") == "application/javascript"
 	compressCandidate := uncompType && (isFlush || w.buf.Len() >= minGZIPSize)
 	if compressCandidate {
 		header.Set("Vary", "accept-encoding")
