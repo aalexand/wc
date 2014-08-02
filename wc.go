@@ -255,12 +255,10 @@ func (sm *DefaultSessionManager) LookupSession(r *http.Request, sid string) (
 // Error logs to stderr.
 func (sm *DefaultSessionManager) Error(r *http.Request, err error) {
 	log.Print(err.Error())
-	panic("error")
 }
 
 // Debug discards debugging messages.
 func (sm *DefaultSessionManager) Debug(debug string) {
-	log.Print(debug)
 }
 
 // HostPrefix provides an empty host prefix.
