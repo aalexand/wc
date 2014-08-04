@@ -1,6 +1,8 @@
 wc
 ============
 
+This library was used to build [dropinchat.com](https://news.ycombinator.com/item?id=8129397) for YC Hacks.
+
 A [Go](http://golang.org/) web server compatible with
 [closure-library](https://github.com/google/closure-library)'s
 [goog.net.WebChannel](https://github.com/google/closure-library/blob/master/closure/goog/labs/net/webchannel.js).
