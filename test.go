@@ -17,7 +17,7 @@ const (
 
 func testPhase1(p *padder) {
 	p.t = none
-	p.write(jsonArray(sm.HostPrefix()))
+	p.write(jsonArray([]interface{}{sm.HostPrefix()}))
 }
 
 func testPhase2(p *padder) {

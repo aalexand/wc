@@ -52,7 +52,7 @@ type messageData struct {
 	Message string
 }
 
-func jsonArray(vals interface{}) string {
+func jsonArray(vals []interface{}) string {
 	replyJSON, err := json.Marshal(vals)
 	if err != nil {
 		panic(err)
